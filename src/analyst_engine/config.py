@@ -89,6 +89,30 @@ class Settings(BaseSettings):
         description="Path to frozen evaluation corpus manifest.",
     )
 
+    # Model routing (fixed per design)
+    batch_summary_model: str = Field(
+        default="qwen3.5-flash",
+        description="Model for batch summaries of 3-5 articles.",
+    )
+    frontier_model: str = Field(
+        default="qwen3.7-max",
+        description="Model for daily/weekly/monthly frontier synthesis.",
+    )
+    embedding_model: str = Field(
+        default="text-embedding-v4",
+        description="Model for brief archive embeddings.",
+    )
+
+    # Provider behavior
+    dashscope_timeout_seconds: float = Field(
+        default=120.0,
+        description="Timeout for DashScope calls (seconds).",
+    )
+    dashscope_max_retries: int = Field(
+        default=3,
+        description="Max retries for retryable provider errors.",
+    )
+
     @field_validator("dashscope_api_key")
     @classmethod
     def validate_dashscope_api_key(cls, value: SecretStr) -> SecretStr:
