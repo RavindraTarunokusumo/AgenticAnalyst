@@ -10,6 +10,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 - [x] Write and validate the approved local-first technical harness specification.
 - [x] Clarify batch-summary provenance and the temporal-holdout demo test.
+- [x] Defer claim-event persistence and define cadence-specific frontier outputs.
 
 ## Session: <Session Name> (<YYYY-MM-DD>)
 

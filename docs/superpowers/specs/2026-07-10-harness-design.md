@@ -6,7 +6,7 @@
 
 ## 1. Purpose and Constraints
 
-This harness provides a repeatable foundation for a durable analytical-agent system before feature work begins. It must support asynchronous ingestion, durable LangGraph workflows, a versioned analytical memory, hybrid retrieval, scheduled jobs, and a reviewable local development experience.
+This harness provides a repeatable foundation for a durable analytical-agent system before feature work begins. It must support asynchronous ingestion, durable LangGraph workflows, a versioned analytical memory, hybrid retrieval, scheduled jobs, and a reviewable local development experience. Structured claim-event persistence is intentionally excluded from the initial harness and will be evaluated through a prototype first.
 
 The first deployment target is local Docker Compose. The design deliberately keeps a modular-monolith topology: API and scheduled worker execution share one deployable application initially. Redis, Celery, a separate vector database, and production infrastructure are explicitly deferred.
 
@@ -19,7 +19,7 @@ Model assignments are fixed by responsibility:
 | Responsibility | Model |
 | --- | --- |
 | Batch summaries of 3–5 related articles, deduplication, relevance and low-cost classification | `qwen3.5-flash` |
-| Daily/weekly synthesis and proposed Narrative State updates | `qwen3.7-max` |
+| Daily, weekly, and monthly synthesis and proposed Narrative State updates | `qwen3.7-max` |
 | Archive embeddings | `text-embedding-v4` |
 
 All credentials are supplied through environment variables. Secrets are neither committed, logged, nor baked into containers.
@@ -49,13 +49,13 @@ LangGraph nodes are narrow services rather than route handlers. Each node accept
 
 The daily workflow does not send individual raw articles directly to the frontier model. After ingestion, it normalizes and filters articles, then forms deterministic groups of **three to five** related articles. Grouping uses cosine similarity of title embeddings by default; it may use cleaned-content embeddings when that gives materially better grouping within the configured cost budget. The selected method, embedding model, threshold, ordered article IDs, and grouping run are persisted.
 
-`qwen3.5-flash` receives the cleaned content and provenance for exactly one group and returns a validated `batch_summary`: a cohesive summary, source/bias notes, named entities/topics, and zero or more evidence-bound claim/event candidates. Each candidate must cite one or more source articles and excerpts within the group. A group can produce no candidate; no candidate may exist without supporting article evidence.
+`qwen3.5-flash` receives the cleaned content and provenance for exactly one group and returns a validated `batch_summary`: a cohesive summary, source/bias notes, named entities/topics, and article citations. Every citation identifies one or more source articles and excerpts within the group. The batch summary is compression with provenance, not a durable analytical assertion.
 
-The daily frontier-synthesis node receives the ordered set of batch summaries, their source notes, relevant retrieved briefs, and the current Narrative State. It uses `qwen3.7-max` to produce the Daily Brief and a proposed Narrative State update. It does not receive raw article bodies except through an explicit, audited provenance-retrieval step. This prevents raw-article context from overwhelming the final synthesis while keeping evidence available for challenge or audit.
+The daily frontier-synthesis node receives the ordered set of batch summaries, their source notes, relevant retrieved briefs, and the current Narrative State. It uses `qwen3.7-max` to produce the Daily Brief and a proposed Narrative State update. Weekly and monthly frontier-synthesis nodes respectively produce a Weekly Brief and Monthly Brief, each with its own proposed Narrative State update. They do not receive raw article bodies except through an explicit, audited provenance-retrieval step. This prevents raw-article context from overwhelming the final synthesis while keeping evidence available for challenge or audit.
 
 ### 2.4 Persistence and retrieval
 
-PostgreSQL 16 plus pgvector is the single system of record. It persists LangGraph checkpoints, source/article records, structured claims/events, briefs, Narrative State versions, workflow runs, and embeddings. The archive embeds daily and weekly briefs—not raw articles—using `text-embedding-v4`; PostgreSQL metadata filters narrow candidates before vector ranking.
+PostgreSQL 16 plus pgvector is the single system of record. It persists LangGraph checkpoints, source/article records, batch summaries, briefs, Narrative State versions, workflow runs, and embeddings. The archive embeds daily, weekly, and monthly briefs—not raw articles—using `text-embedding-v4`; PostgreSQL metadata filters narrow candidates before vector ranking.
 
 Initial persistence contracts:
 
@@ -65,8 +65,7 @@ Initial persistence contracts:
 | `article` | Normalized URL fingerprint; source ID; immutable raw/cleaned provenance |
 | `article_batch` | UUID; ordered 3–5 article IDs; title/content grouping method, embedding model/threshold, and grouping-run ID |
 | `batch_summary` | UUID; `article_batch` ID; Flash model/prompt version; validated summary; source notes; summary-time citations |
-| `claim_event` | UUID; `batch_summary` ID; normalized assertion/event; time, entities, topics, epistemic status, reliability notes, and immutable article-evidence links |
-| `brief` | UUID; cadence (`daily`/`weekly`); covered interval; content; source references |
+| `brief` | UUID; cadence (`daily`/`weekly`/`monthly`); covered interval; content; cited batch summaries and source references |
 | `narrative_state_version` | UUID; parent version; created-by workflow run; structured state and change log |
 | `prediction_expectation` | Narrative version; confidence; confirmation/falsification criteria; outcome status |
 | `embedding` | Brief ID; model ID; vector; metadata filter columns |
@@ -74,15 +73,11 @@ Initial persistence contracts:
 
 Alembic is the sole schema-change mechanism. Migrations must be reversible where feasible and are exercised against a blank PostgreSQL container in CI.
 
-#### `claim_event` contract
+#### Deferred claim-event extension
 
-A `claim_event` is a normalized, evidence-bearing analytical record, not a raw article extraction and not a system assertion of fact. It is generated only from a validated `batch_summary` candidate and supports retrieval, contradiction detection, expectation-versus-reality checks, and auditability.
+The initial harness has no `claim_event` table, Flash candidates, event fingerprinting, or contradiction graph. Briefs and Narrative State updates retain citations to batch summaries and source articles, preserving the auditable path `Brief/Narrative change → batch summary → 3–5 input articles → source and excerpt`.
 
-Its canonical fields are: immutable ID; `batch_summary_id`; normalized assertion; event/claim kind (`observed_event`, `reported_claim`, `forecast`, or `assessment`); event time as a bounded interval plus time precision; entity IDs and topics; location when known; confidence and epistemic status (`provisional`, `corroborated`, `contested`, `superseded`, or `retracted`); source/reliability and bias notes; an event fingerprint for deterministic duplicate detection; and creation/model/prompt metadata.
-
-Its evidence relation is many-to-many to immutable article records and requires, for each supporting or disputing article, the role, cited cleaned-content excerpt, excerpt offset or stable locator, article publication time, and source ID. The full content remains solely on the article record. `claim_event` also retains its one-to-one provenance chain through `batch_summary` and `article_batch`; therefore every statement can be traced as `Daily Brief/Narrative change → batch summary → 3–5 input articles → source and excerpt`.
-
-An upsert may add corroborating or disputing evidence only when the normalized assertion, material time interval, and entity set match the existing event fingerprint. A material disagreement creates a separate `claim_event` linked by an explicit contradiction relation. A Daily Brief can cite batch summaries and their claim events, but the frontier model is not allowed to turn an unsupported summary statement into a Narrative State mutation. The mutation must retain the cited batch-summary and claim-event IDs.
+A future prototype may test whether normalized claim/event records materially improve retrieval precision, expectation tracking, or contradiction analysis enough to justify their extraction cost and error modes. Only that evidence can authorize a dedicated persistence contract; it must not be pre-implemented as a compatibility layer.
 
 ### 2.5 Provider boundary and observability
 
@@ -129,7 +124,7 @@ Pre-commit runs formatting, linting, whitespace checks, and secret detection. CI
 
 ## 5. Test Strategy
 
-Tests are organized as unit, persistence integration, workflow integration, delivery/API tests, and a temporal-holdout demo. Unit tests use deterministic fake clocks, source fixtures, model gateway fakes, and HTTP transport mocks. Integration tests use Testcontainers PostgreSQL with pgvector and execute real Alembic migrations. Workflow tests validate resumption from a checkpoint, idempotent scheduled runs, structured-output rejection/retry, batch-summary-to-claim-event provenance, and versioned Narrative State transitions. API tests use FastAPI's ASGI transport.
+Tests are organized as unit, persistence integration, workflow integration, delivery/API tests, and a temporal-holdout demo. Unit tests use deterministic fake clocks, source fixtures, model gateway fakes, and HTTP transport mocks. Integration tests use Testcontainers PostgreSQL with pgvector and execute real Alembic migrations. Workflow tests validate resumption from a checkpoint, idempotent scheduled runs, structured-output rejection/retry, batch-summary-to-brief provenance, and versioned Narrative State transitions. API tests use FastAPI's ASGI transport.
 
 The normal unit, integration, workflow, and API suites never contact DashScope, LangSmith, source websites, or a public SearXNG instance. Contract tests verify the DashScope adapter sends the configured base URL and intended model identifier without exposing a real key.
 
@@ -137,9 +132,9 @@ The normal unit, integration, workflow, and API suites never contact DashScope, 
 
 The final testing layer is an explicitly invoked, model-in-the-loop demo test. It replays a frozen, provenance-preserving corpus of one month of news that occurred after a selected frontier model's documented knowledge cut-off—for example, `qwen3.7-max-preview` with a May 2026 cut-off against a June 2026 corpus. The model is never given web-search tools, live ingestion, a future-dated brief, or any corpus item until that item's simulated publication day. A seeded Narrative State contains only information available on or before the cut-off date.
 
-The test releases articles day by day, applies normal grouping into 3–5 article batches, runs Flash batch summaries, then runs the snapshot frontier model for Daily Brief/Narrative updates. It executes weekly rollups on the same simulated schedule. The corpus, each article's original publication timestamp, model identifier/version, cut-off declaration, configuration, prompts, random seed where supported, and LangSmith trace IDs are preserved in an evaluation report.
+The test releases articles day by day, applies normal grouping into 3–5 article batches, runs Flash batch summaries, then runs the snapshot frontier model for Daily Brief/Narrative updates. It executes weekly rollups and the monthly synthesis on the same simulated schedule. The corpus, each article's original publication timestamp, model identifier/version, cut-off declaration, configuration, prompts, random seed where supported, and LangSmith trace IDs are preserved in an evaluation report.
 
-The demo asserts deterministic system properties: chronological release is enforced; 30 daily runs and scheduled weekly rollups complete or report resumable failures; every brief/narrative citation resolves through batch summaries to allowed articles; no source timestamp after the simulated run time is visible; and all schemas, checkpoints, provenance, and Narrative State version chains are valid. It also produces a human-reviewed quality report for developments, prediction calibration, contradictions, and surprise handling. It is opt-in because it is costly and nondeterministic; it runs outside pull-request CI with a dedicated evaluation key and project.
+The demo asserts deterministic system properties: chronological release is enforced; 30 daily runs, scheduled weekly rollups, and the monthly synthesis complete or report resumable failures; every brief/narrative citation resolves through batch summaries to allowed articles; no source timestamp after the simulated run time is visible; and all schemas, checkpoints, provenance, and Narrative State version chains are valid. It also produces a human-reviewed quality report for developments, prediction calibration, and surprise handling. It is opt-in because it is costly and nondeterministic; it runs outside pull-request CI with a dedicated evaluation key and project.
 
 This is a strong temporal-leakage control, not a mathematical proof that a provider model has no post-cut-off knowledge. The harness records the provider's documented cut-off and eliminates system-provided future information; evaluation conclusions must state that residual pre-training leakage cannot be independently ruled out.
 
@@ -163,8 +158,8 @@ The harness is complete when:
 5. LangSmith tracing can be enabled with environment variables, includes correlation metadata, redacts configured sensitive content, and is off by default in tests.
 6. Formatting, linting, strict type checking, unit/integration tests, and the Compose smoke test are documented and pass in a clean environment.
 7. Architecture, persistence, patterns, commands, testing, and agent-harness documentation contain the final toolchain and commands.
-8. An opt-in one-month temporal-holdout demo can replay a frozen post-cut-off corpus without exposing future articles, and writes the required auditable evaluation report.
+8. An opt-in one-month temporal-holdout demo can replay a frozen post-cut-off corpus without exposing future articles, run all three briefing cadences, and write the required auditable evaluation report.
 
 ## 8. Explicitly Deferred
 
-Production hosting, a Redis/Celery queue, multi-worker distributed scheduling, graph/entity storage beyond relational links, user authentication/authorization policy, dashboards/metrics backends beyond LangSmith, and automated source-reliability scoring are future feature decisions. Their absence must not be hidden behind compatibility shims.
+Production hosting, a Redis/Celery queue, multi-worker distributed scheduling, a structured claim-event/event-index persistence layer, graph/entity storage beyond relational links, user authentication/authorization policy, dashboards/metrics backends beyond LangSmith, and automated source-reliability scoring are future feature decisions. Their absence must not be hidden behind compatibility shims.
