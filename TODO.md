@@ -18,7 +18,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 - [x] Task 1 — Establish the Python project and local quality baseline.
 - [x] Task 2 — Provide the local Compose environment.
-- [ ] Task 3 — Implement durable domain and persistence foundations.
+- [x] Task 3 — Implement durable domain and persistence foundations.
   - [x] 3.1 Add runtime/dev dependencies (SQLAlchemy, Alembic, asyncpg, pgvector, langgraph, langgraph-checkpoint-postgres, testcontainers) and update lock
   - [x] 3.2 Create Pydantic domain models (src/analyst_engine/domain/models.py): Source, Article, ArticleBatch, BatchSummary, Brief, NarrativeStateVersion, PredictionExpectation, Embedding, WorkflowRun, Cadence, Citation, etc.
   - [x] 3.3 Bootstrap Alembic (alembic.ini + alembic/env.py + script) wired to our async engine and models
