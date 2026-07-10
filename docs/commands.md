@@ -1,90 +1,148 @@
 # Commands Reference
 
+## Prerequisites
+
+- [uv](https://docs.astral.sh/uv/) installed
+- Python 3.12 (managed by uv via `.python-version`)
+
 ## Setup
 
-(Define environment activation and dependency installation once the stack is chosen.)
-
-Generic examples:
+Install dependencies and create the local virtual environment:
 
 ```bash
-# Python example
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
-For Windows PowerShell:
+Copy the environment template and supply local values (never commit `.env`):
+
+```bash
+cp .env.example .env
+```
+
+On Windows PowerShell:
 
 ```powershell
-.venv\Scripts\activate
-pip install -r requirements.txt
+Copy-Item .env.example .env
 ```
 
-## Development Server
-
-(Replace with the actual project command once defined.)
+Activate the project environment (optional; `uv run` works without activation):
 
 ```bash
-# python main.py
-# npm run dev
-# cargo run
-# etc.
+source .venv/bin/activate
+```
+
+On Windows PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+## Routine Verification
+
+Run the full local quality gate sequence from the repository root:
+
+```bash
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy src tests
+uv run pytest
 ```
 
 ## Testing
 
+Run all tests with coverage:
+
 ```bash
-# pytest
-# npm test
-# cargo test
+uv run pytest
+```
+
+Run a single test file:
+
+```bash
+uv run pytest tests/test_config.py
+```
+
+Run a single test by name:
+
+```bash
+uv run pytest -k "rejects_missing_dashscope_api_key"
+```
+
+Stop on the first failure:
+
+```bash
+uv run pytest -x
 ```
 
 ## Lint and Format
 
-(Adapt to actual tools.)
+Check formatting:
 
 ```bash
-# ruff check . --fix && ruff format .
-# eslint . && prettier --write .
+uv run ruff format --check .
 ```
 
-## Database (once applicable)
-
-Initialize:
+Apply formatting:
 
 ```bash
-# python scripts/init_db.py
+uv run ruff format .
 ```
 
-Seed local data:
+Lint:
 
 ```bash
-# python scripts/seed_mock_db.py
+uv run ruff check .
 ```
 
-Reset local data:
+Lint with auto-fix:
 
 ```bash
-# python scripts/reset_db.py
+uv run ruff check . --fix
 ```
+
+Type check:
+
+```bash
+uv run mypy src tests
+```
+
+## Pre-commit Hooks
+
+Install hooks once per clone:
+
+```bash
+uv run pre-commit install
+```
+
+Run all hooks against the working tree:
+
+```bash
+uv run pre-commit run --all-files
+```
+
+## Development Server
+
+The API and scheduler entrypoints are introduced in later harness tasks. No development server command is available yet.
+
+## Database
+
+Database initialization, migrations, and Compose services are introduced in later harness tasks.
 
 ## Logs
 
-```bash
-# tail -f logs/*.log
-```
+Application logging configuration is introduced with the API and workflow layers.
 
 ## Environment Variables
 
-List required variables here as they are introduced:
+Required and optional settings are documented in `.env.example`. At minimum, runtime startup requires:
 
 ```
-APP_ENV=development
+DASHSCOPE_API_KEY=
+DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
 DATABASE_URL=
-API_KEY=
 ```
 
-Never commit real secrets.
+LangSmith, scheduler mode, and temporal evaluation settings are also named in `.env.example`. Never commit real secrets.
 
 ## Git Notes
 
