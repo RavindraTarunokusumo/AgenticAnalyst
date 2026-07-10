@@ -1,0 +1,1 @@
+Task: Harness Design\nSummary: Run the temporal-holdout evaluation on an accelerated virtual clock with no real-time waiting.\nDocs: docs/superpowers/specs/2026-07-10-harness-design.md, TODO.md\nTODO: Harness Design / accelerate temporal-holdout replay\nValidation: git diff --check; placeholder scan
