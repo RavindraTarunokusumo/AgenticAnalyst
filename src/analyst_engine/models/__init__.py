@@ -1,10 +1,10 @@
 """Provider adapters and model gateway."""
 
 from .gateway import (
+    ModelError,
     ModelGateway,
     ModelTask,
     ModelUsage,
-    ModelError,
     RetryableModelError,
     TerminalModelError,
 )

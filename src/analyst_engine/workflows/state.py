@@ -6,7 +6,6 @@ All nodes consume and produce validated Pydantic state where possible.
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
 
 from pydantic import BaseModel, Field
 

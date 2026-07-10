@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import StrEnum
-from typing import Any, Type
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ModelTask(StrEnum):
@@ -34,7 +34,9 @@ class ModelUsage(BaseModel):
 class ModelError(Exception):
     """Base for provider errors."""
 
-    def __init__(self, message: str, *, retryable: bool = False, details: dict[str, Any] | None = None):
+    def __init__(
+        self, message: str, *, retryable: bool = False, details: dict[str, Any] | None = None
+    ):
         super().__init__(message)
         self.retryable = retryable
         self.details = details or {}
@@ -59,7 +61,7 @@ class ModelGateway(ABC):
         *,
         task: ModelTask,
         messages: list[dict[str, str]],
-        output_schema: Type[BaseModel],
+        output_schema: type[BaseModel],
         correlation_id: str,
     ) -> tuple[BaseModel, ModelUsage]:
         """Call the appropriate model, enforce structured output, return (result, usage).

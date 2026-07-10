@@ -138,6 +138,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "freezegun" },
+    { name = "jsonpatch" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -173,6 +174,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "freezegun", specifier = ">=1.5" },
+    { name = "jsonpatch", specifier = ">=1.33" },
     { name = "mypy", specifier = ">=1.14" },
     { name = "pre-commit", specifier = ">=4.0" },
     { name = "pytest", specifier = ">=8.3" },
