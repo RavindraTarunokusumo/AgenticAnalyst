@@ -8,7 +8,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Session: Harness Design (2026-07-10)
 
-- [ ] Write and validate the approved local-first technical harness specification.
+- [x] Write and validate the approved local-first technical harness specification.
 
 ## Session: <Session Name> (<YYYY-MM-DD>)
 
