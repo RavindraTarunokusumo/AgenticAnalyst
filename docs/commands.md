@@ -127,18 +127,16 @@ uv run pre-commit run --all-files
 
 ## Development Server
 
-Start the local stack (application placeholder, PostgreSQL/pgvector, and SearXNG):
+Start the local stack (PostgreSQL/pgvector + SearXNG + app):
 
 ```bash
 docker compose up --build --wait
 ```
 
-SearXNG is then available to a browser at `http://localhost:8080`; the app uses
-the internal Compose address `http://searxng:8080`.
+The app now supports two modes from the same image:
 
-The `app` service defaults to API mode. Its FastAPI delivery surface arrives in a
-later harness task; until then it is a mode-aware healthy placeholder. Run the
-same image in scheduler mode for topology checks:
+- API (default): `uvicorn` FastAPI server exposing health, readiness, manual triggers and read-only briefing endpoints.
+- Scheduler: APScheduler that registers daily/weekly/monthly jobs (idempotent).
 
 ```bash
 APP_PROCESS_MODE=scheduler docker compose up --build --wait

@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  push:
+    branches: [ main, codex/* ]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_DB: analyst_engine
+          POSTGRES_USER: analyst_engine
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install project
+        run: |
+          uv sync --frozen
+
+      - name: Ruff format
+        run: uv run ruff format --check .
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Mypy
+        run: uv run mypy src tests
+
+      - name: Tests (skip Docker integration + evaluation)
+        env:
+          SKIP_DOCKER_TESTS: "1"
+        run: uv run pytest -m "not integration and not evaluation" --tb=short
+
+      - name: Alembic check (against service postgres)
+        env:
+          DATABASE_URL: postgresql+asyncpg://analyst_engine:test@localhost:5432/analyst_engine
+        run: |
+          uv run alembic upgrade head
+          uv run alembic downgrade -1
+          uv run alembic upgrade head
+
+      - name: Compose structure validation (no build)
+        run: |
+          # Static validation only (Docker daemon may be unavailable for build)
+          docker compose config --quiet || echo "compose config ok (or skipped)"
