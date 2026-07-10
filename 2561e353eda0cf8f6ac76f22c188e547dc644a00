@@ -1,0 +1,5 @@
+Task: 3.4 Initial migration
+Summary: Manual upgrade creates 9 app tables + 4 LangGraph checkpoint tables using pgvector extension, proper UUID/JSONB/ARRAY/Vector, unique constraints on fingerprints and idempotency keys, FKs, indexes. Downgrade is full reverse. Alembic offline SQL gen succeeded. claim_event omitted.
+Docs: alembic/versions/..., TODO.md
+TODO: Task 3 sub-item 3.4
+Validation: ruff, mypy, pytest + alembic --sql exercised before commit.
