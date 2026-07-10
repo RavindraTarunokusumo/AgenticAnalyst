@@ -9,6 +9,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 ## Session: Harness Design (2026-07-10)
 
 - [x] Write and validate the approved local-first technical harness specification.
+- [x] Clarify batch-summary provenance and the temporal-holdout demo test.
 
 ## Session: <Session Name> (<YYYY-MM-DD>)
 
