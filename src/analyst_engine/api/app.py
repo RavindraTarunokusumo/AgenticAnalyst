@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
 from typing import Any
@@ -9,7 +10,6 @@ from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
-from starlette import status
 
 from analyst_engine.config import Settings
 from analyst_engine.persistence.engine import get_async_engine, get_session_factory
@@ -37,7 +37,7 @@ def get_settings() -> Settings:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     engine = get_async_engine(settings)
     session_factory = get_session_factory(engine)
@@ -72,8 +72,8 @@ def create_app() -> FastAPI:
     async def trigger(
         req: TriggerRequest,
         _key: str = Depends(_require_key),
-        settings: Settings = Depends(get_settings),
     ) -> TriggerResponse:
+        # settings = get_settings()  # available if needed for future
         runner: WorkflowRunner = app.state.runner
         if req.cadence == "daily":
             run = await runner.run_daily(req.covered_start)

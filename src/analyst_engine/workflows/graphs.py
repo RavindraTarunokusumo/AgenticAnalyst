@@ -20,7 +20,6 @@ from analyst_engine.domain.models import (
 )
 from analyst_engine.models.gateway import ModelGateway, ModelTask
 from analyst_engine.persistence.repositories import (
-    get_brief_by_cadence_interval,
     save_brief,
     save_narrative_version,
 )
@@ -51,9 +50,12 @@ async def _frontier_synthesis(
         },
         {
             "role": "user",
-            "content": f"Synthesize a {inp.cadence} brief for {inp.covered_start} to {inp.covered_end}. "
-            f"Use these batch summaries: {[s.id for s in inp.batch_summaries]}. "
-            f"Prior narrative: {inp.current_narrative.id if inp.current_narrative else 'none'}.",
+            "content": (
+                f"Synthesize a {inp.cadence} brief for {inp.covered_start} "
+                f"to {inp.covered_end}. Use these batch summaries: "
+                f"{[s.id for s in inp.batch_summaries]}. "
+                f"Prior narrative: {inp.current_narrative.id if inp.current_narrative else 'none'}."
+            ),
         },
     ]
 
@@ -70,13 +72,14 @@ async def _frontier_synthesis(
         output_schema=_FrontierResult,
         correlation_id=inp.correlation_id,
     )
+    frontier: _FrontierResult = result  # type: ignore[assignment]
 
     # Build domain objects (simplified for harness)
     brief = Brief(
         cadence=inp.cadence,
         covered_start=inp.covered_start,
         covered_end=inp.covered_end,
-        content=result.brief_content,
+        content=frontier.brief_content,
         cited_batch_summary_ids=[s.id for s in inp.batch_summaries],
         cited_article_ids=[],  # populated upstream in real flow
         created_by_run_id=inp.correlation_id,  # placeholder
@@ -84,8 +87,8 @@ async def _frontier_synthesis(
 
     narrative = NarrativeStateVersion(
         created_by_run_id=inp.correlation_id,
-        state=result.narrative_state,
-        change_log=result.change_log,
+        state=frontier.narrative_state,
+        change_log=frontier.change_log,
     )
 
     expectations = [
@@ -96,7 +99,7 @@ async def _frontier_synthesis(
             confirmation_criteria=e.get("confirmation", ""),
             falsification_criteria=e.get("falsification", ""),
         )
-        for e in result.expectations
+        for e in frontier.expectations
     ]
 
     return BriefGenerationOutput(
@@ -106,7 +109,9 @@ async def _frontier_synthesis(
     )
 
 
-async def daily_frontier_node(state: dict[str, Any], gateway: ModelGateway, session) -> dict[str, Any]:
+async def daily_frontier_node(
+    state: dict[str, Any], gateway: ModelGateway, session: Any
+) -> dict[str, Any]:
     """Daily node: produce brief + narrative proposal from batch summaries."""
     inp = BriefGenerationInput(
         cadence=Cadence(state["cadence"]),
@@ -128,9 +133,9 @@ async def daily_frontier_node(state: dict[str, Any], gateway: ModelGateway, sess
     }
 
 
-def build_daily_graph(gateway: ModelGateway, session_factory) -> StateGraph:
+def build_daily_graph(gateway: ModelGateway, session_factory: Any) -> StateGraph[Any]:
     """Build the daily cadence graph."""
-    builder = StateGraph(CadenceWorkflowState)
+    builder = StateGraph(dict[str, Any])  # type: ignore[type-var]
 
     async def node(state: CadenceWorkflowState) -> dict[str, Any]:
         # In real usage the graph would be compiled with checkpointer
@@ -145,21 +150,34 @@ def build_daily_graph(gateway: ModelGateway, session_factory) -> StateGraph:
 
 
 # Weekly and monthly are similar rollups (simplified for harness completeness)
-def build_weekly_graph(gateway: ModelGateway, session_factory) -> StateGraph:
-    builder = StateGraph(CadenceWorkflowState)
+def build_weekly_graph(gateway: ModelGateway, session_factory: Any) -> StateGraph[Any]:
+    builder = StateGraph(dict[str, Any])  # type: ignore[type-var]
 
-    async def node(state: CadenceWorkflowState) -> dict[str, Any]:
+    async def node(state: Any) -> dict[str, Any]:
         # Placeholder that reuses daily logic shape
         async with session_factory() as session:
             inp = BriefGenerationInput(
                 cadence=Cadence.WEEKLY,
-                covered_start=date.fromisoformat(state.covered_start.isoformat() if hasattr(state, "covered_start") else str(state["covered_start"])),
-                covered_end=date.fromisoformat(state.covered_end.isoformat() if hasattr(state, "covered_end") else str(state["covered_end"])),
-                correlation_id=state.correlation_id if hasattr(state, "correlation_id") else state["correlation_id"],
+                covered_start=date.fromisoformat(
+                    state.covered_start.isoformat()
+                    if hasattr(state, "covered_start")
+                    else str(state["covered_start"])
+                ),
+                covered_end=date.fromisoformat(
+                    state.covered_end.isoformat()
+                    if hasattr(state, "covered_end")
+                    else str(state["covered_end"])
+                ),
+                correlation_id=state.correlation_id
+                if hasattr(state, "correlation_id")
+                else state["correlation_id"],
             )
             out = await _frontier_synthesis(gateway, inp)
             await save_brief(session, out.brief)
-            return {"brief": out.brief.model_dump(), "proposed_narrative": out.proposed_narrative_version.model_dump()}
+            return {
+                "brief": out.brief.model_dump(),
+                "proposed_narrative": out.proposed_narrative_version.model_dump(),
+            }
 
     builder.add_node("rollup", node)
     builder.set_entry_point("rollup")
@@ -167,6 +185,6 @@ def build_weekly_graph(gateway: ModelGateway, session_factory) -> StateGraph:
     return builder
 
 
-def build_monthly_graph(gateway: ModelGateway, session_factory) -> StateGraph:
+def build_monthly_graph(gateway: ModelGateway, session_factory: Any) -> StateGraph[Any]:
     # Same shape as weekly for harness
     return build_weekly_graph(gateway, session_factory)

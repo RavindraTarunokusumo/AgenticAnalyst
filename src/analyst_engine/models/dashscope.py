@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Type
 
-from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
+from openai import APIError, APITimeoutError, AsyncOpenAI, RateLimitError
 from pydantic import BaseModel, ValidationError
 
 from analyst_engine.config import Settings
@@ -45,7 +44,7 @@ class DashScopeAdapter(ModelGateway):
         *,
         task: ModelTask,
         messages: list[dict[str, str]],
-        output_schema: Type[BaseModel],
+        output_schema: type[BaseModel],
         correlation_id: str,
     ) -> tuple[BaseModel, ModelUsage]:
         model = self.get_model_for_task(task)
@@ -82,7 +81,11 @@ class DashScopeAdapter(ModelGateway):
             # Treat most API errors as terminal for safety (bad prompt, auth, etc.)
             raise TerminalModelError(
                 f"Terminal DashScope error for {task}: {exc}",
-                details={"model": model, "correlation_id": correlation_id, "status": getattr(exc, "status_code", None)},
+                details={
+                    "model": model,
+                    "correlation_id": correlation_id,
+                    "status": getattr(exc, "status_code", None),
+                },
             ) from exc
         except (json.JSONDecodeError, ValidationError) as exc:
             # Malformed structured output must never be accepted

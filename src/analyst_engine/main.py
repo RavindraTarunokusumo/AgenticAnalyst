@@ -12,7 +12,6 @@ from analyst_engine.workflows.runner import WorkflowRunner
 
 
 def run_api() -> None:
-    settings = Settings()
     uvicorn.run(
         "analyst_engine.api.app:create_app",
         host="0.0.0.0",
