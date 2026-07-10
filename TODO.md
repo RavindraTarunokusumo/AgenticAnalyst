@@ -25,7 +25,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
   - [x] 3.4 Author initial Alembic migration establishing tables + indexes + constraints (LangGraph checkpoint tables included; claim_event explicitly absent)
   - [x] 3.5 Persistence engine: async SQLAlchemy engine + scoped session factory from Settings (persistence/engine.py)
   - [x] 3.6 ORM models: SQLAlchemy 2 declarative models with pgvector, unique constraints, relationships (persistence/models.py)
-  - [ ] 3.7 Repositories: session-accepting CRUD + idempotency lookup for runs + citation helpers (persistence/repositories.py)
+  - [x] 3.7 Repositories: session-accepting CRUD + idempotency lookup for runs + citation helpers (persistence/repositories.py)
   - [ ] 3.8 LangGraph checkpoint integration (persistence/checkpoints.py) using Postgres async saver on shared DB
   - [ ] 3.9 Persistence integration tests (tests/integration/) using Testcontainers Postgres+pgvector: blank migrate, constraints, repo ops, lineage, checkpoints
   - [ ] 3.10 Update docs/database.md and docs/patterns.md; reconcile architecture.md as needed for persistence
