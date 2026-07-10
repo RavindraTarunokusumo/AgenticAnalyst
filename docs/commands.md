@@ -25,6 +25,11 @@ On Windows PowerShell:
 Copy-Item .env.example .env
 ```
 
+Before starting Compose, set non-empty `POSTGRES_PASSWORD` and
+`SEARXNG_SECRET_KEY` values in `.env`. Compose deliberately refuses to start
+without them. Set `DATABASE_URL` to the corresponding `postgres` hostname URL
+before using later application tasks.
+
 Activate the project environment (optional; `uv run` works without activation):
 
 ```bash
@@ -122,15 +127,78 @@ uv run pre-commit run --all-files
 
 ## Development Server
 
-The API and scheduler entrypoints are introduced in later harness tasks. No development server command is available yet.
+Start the local stack (application placeholder, PostgreSQL/pgvector, and SearXNG):
+
+```bash
+docker compose up --build --wait
+```
+
+SearXNG is then available to a browser at `http://localhost:8080`; the app uses
+the internal Compose address `http://searxng:8080`.
+
+The `app` service defaults to API mode. Its FastAPI delivery surface arrives in a
+later harness task; until then it is a mode-aware healthy placeholder. Run the
+same image in scheduler mode for topology checks:
+
+```bash
+APP_PROCESS_MODE=scheduler docker compose up --build --wait
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:APP_PROCESS_MODE = "scheduler"
+docker compose up --build --wait
+Remove-Item Env:APP_PROCESS_MODE
+```
+
+The application image installs Playwright Chromium during its build so future
+Crawl4AI ingestion can use the same image without a browser-install step.
 
 ## Database
 
-Database initialization, migrations, and Compose services are introduced in later harness tasks.
+The Compose stack starts PostgreSQL 16 with pgvector. Database migrations are
+introduced in a later harness task.
 
 ## Logs
 
-Application logging configuration is introduced with the API and workflow layers.
+Follow all local-service logs:
+
+```bash
+docker compose logs --follow app postgres searxng
+```
+
+Stop the stack while retaining its named volumes:
+
+```bash
+docker compose down
+```
+
+Reset all local PostgreSQL and SearXNG state (destructive):
+
+```bash
+docker compose down --volumes --remove-orphans
+```
+
+Rotate only the persisted SearXNG secret while retaining PostgreSQL data:
+
+```bash
+docker compose down
+docker volume rm analyst-engine_searxng_config
+# Set a replacement SEARXNG_SECRET_KEY in .env before restarting.
+docker compose up --build --wait
+```
+
+The SearXNG bootstrap writes `SEARXNG_SECRET_KEY` only when the configuration
+volume is empty. Editing the variable then restarting leaves the existing
+secret unchanged. With a custom Compose project name, use `docker compose
+volume ls` to identify the corresponding SearXNG configuration volume.
+
+Inspect service health and startup ordering:
+
+```bash
+docker compose ps
+```
 
 ## Environment Variables
 
@@ -139,7 +207,12 @@ Required and optional settings are documented in `.env.example`. At minimum, run
 ```
 DASHSCOPE_API_KEY=
 DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-DATABASE_URL=
+POSTGRES_DB=analyst_engine
+POSTGRES_USER=analyst_engine
+POSTGRES_PASSWORD=<local-password>
+DATABASE_URL=postgresql+asyncpg://<user>:<password>@postgres:5432/analyst_engine
+SEARXNG_SECRET_KEY=<local-secret>
+SEARXNG_PUBLIC_BASE_URL=http://localhost:8080/
 ```
 
 LangSmith, scheduler mode, and temporal evaluation settings are also named in `.env.example`. Never commit real secrets.

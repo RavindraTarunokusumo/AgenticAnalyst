@@ -17,7 +17,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 ## Session: Technical Harness Implementation (2026-07-10)
 
 - [x] Task 1 — Establish the Python project and local quality baseline.
-- [ ] Task 2 — Provide the local Compose environment.
+- [x] Task 2 — Provide the local Compose environment.
 - [ ] Task 3 — Implement durable domain and persistence foundations.
 - [ ] Task 4 — Add provider and observability adapters.
 - [ ] Task 5 — Assemble checkpointed cadence workflows and scheduling.
