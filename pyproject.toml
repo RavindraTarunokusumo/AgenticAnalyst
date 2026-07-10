@@ -4,10 +4,17 @@ version = "0.1.0"
 description = "Durable analytical-agent system for briefing workflows"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.13",
+    "asyncpg>=0.29",
     "crawl4ai>=0.7",
+    "langgraph>=0.2.60",
+    "langgraph-checkpoint-postgres>=2.0.0",
+    "pgvector>=0.3",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
     "playwright>=1.52",
+    "psycopg[binary]>=3.2",
+    "sqlalchemy[asyncio]>=2.0",
 ]
 
 [dependency-groups]
@@ -19,6 +26,7 @@ dev = [
     "pytest-asyncio>=0.25",
     "pytest-cov>=6.0",
     "ruff>=0.9",
+    "testcontainers>=4.0",
     "types-pyyaml>=6.0.12",
 ]
 
