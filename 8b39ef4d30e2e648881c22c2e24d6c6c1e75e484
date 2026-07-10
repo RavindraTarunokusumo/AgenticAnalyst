@@ -1,0 +1,5 @@
+Task: 3.9 Integration tests
+Summary: Testcontainers-based tests for migrations from blank, repos (idempotency + citation path), and checkpoint roundtrip. Skipped gracefully without Docker.
+Docs: tests/integration/* , TODO.md
+TODO: 3.9
+Validation: full suite (25 pass, 2 skip) + lint/type before commit.
