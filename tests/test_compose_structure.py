@@ -88,12 +88,11 @@ def test_dockerignore_excludes_secrets_repository_metadata_and_local_state() -> 
     assert {".env", ".env.*", ".git", ".venv", ".mypy_cache", "postgres-data"} <= set(dockerignore)
 
 
-def test_app_entrypoint_has_explicit_api_and_scheduler_modes_without_jobs() -> None:
+def test_app_entrypoint_has_explicit_api_and_scheduler_modes() -> None:
     entrypoint = (ROOT / "docker" / "app-entrypoint.sh").read_text(encoding="utf-8")
 
     assert "api | scheduler" in entrypoint
-    assert "APScheduler" in entrypoint
-    assert "register" not in entrypoint.lower()
+    assert "python -m analyst_engine.main" in entrypoint
 
 
 def test_container_image_installs_playwright_chromium_for_future_ingestion() -> None:

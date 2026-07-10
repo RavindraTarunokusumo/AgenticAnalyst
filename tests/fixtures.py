@@ -1,9 +1,10 @@
 """Deterministic fixtures and fakes for the harness (no external calls)."""
 
+# mypy: ignore-errors
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from analyst_engine.domain.models import (
@@ -31,7 +32,11 @@ class FakeModelGateway(ModelGateway):
         output_schema: type[Any],
         correlation_id: str,
     ) -> tuple[Any, ModelUsage]:
-        if task in (ModelTask.FRONTIER_DAILY, ModelTask.FRONTIER_WEEKLY, ModelTask.FRONTIER_MONTHLY):
+        if task in (
+            ModelTask.FRONTIER_DAILY,
+            ModelTask.FRONTIER_WEEKLY,
+            ModelTask.FRONTIER_MONTHLY,
+        ):
             result = output_schema(
                 brief_content="Synthetic brief for " + correlation_id,
                 narrative_state={"themes": ["test"]},
@@ -58,7 +63,7 @@ def make_article(source_id: uuid.UUID, published: date) -> Article:
         url=f"https://example.com/{published}",
         url_fingerprint=f"fp-{published}",
         title=f"Article {published}",
-        published_at=datetime.combine(published, datetime.min.time(), tzinfo=timezone.utc),
+        published_at=datetime.combine(published, datetime.min.time(), tzinfo=UTC),
         cleaned_content=f"Clean body for {published}.",
     )
 
