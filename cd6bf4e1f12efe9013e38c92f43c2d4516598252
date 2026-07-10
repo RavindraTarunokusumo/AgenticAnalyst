@@ -1,0 +1,1 @@
+Task: Harness Design\nSummary: Record the approved technical-harness specification task.\nDocs: TODO.md\nTODO: Harness Design / write and validate specification\nValidation: git diff --check
