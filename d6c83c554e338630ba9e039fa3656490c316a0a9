@@ -1,0 +1,1 @@
+Task: Harness implementation tracking\nSummary: Log the eight approved harness implementation tasks before delegated work begins.\nDocs: TODO.md\nTODO: Technical Harness Implementation / Tasks 1-8\nValidation: git diff --check
