@@ -1,0 +1,5 @@
+Task: 3.3 Alembic initialization
+Summary: Ran alembic init, customized env.py for DATABASE_URL with asyncpg->psycopg normalization, offline/online paths, include_schemas. alembic.ini updated with guidance. Ready for manual initial migration.
+Docs: alembic.ini, alembic/*, TODO.md
+TODO: Task 3 sub-item 3.3
+Validation: full gates passed before commit. Specific add of alembic.ini + alembic/ + TODO.md
