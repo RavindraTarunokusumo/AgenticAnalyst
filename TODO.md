@@ -6,6 +6,10 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
+## Session: Harness Design (2026-07-10)
+
+- [ ] Write and validate the approved local-first technical harness specification.
+
 ## Session: <Session Name> (<YYYY-MM-DD>)
 
 - [ ] <sub-item 1>
