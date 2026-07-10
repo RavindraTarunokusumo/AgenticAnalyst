@@ -21,7 +21,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 - [ ] Task 3 — Implement durable domain and persistence foundations.
   - [x] 3.1 Add runtime/dev dependencies (SQLAlchemy, Alembic, asyncpg, pgvector, langgraph, langgraph-checkpoint-postgres, testcontainers) and update lock
   - [x] 3.2 Create Pydantic domain models (src/analyst_engine/domain/models.py): Source, Article, ArticleBatch, BatchSummary, Brief, NarrativeStateVersion, PredictionExpectation, Embedding, WorkflowRun, Cadence, Citation, etc.
-  - [ ] 3.3 Bootstrap Alembic (alembic.ini + alembic/env.py + script) wired to our async engine and models
+  - [x] 3.3 Bootstrap Alembic (alembic.ini + alembic/env.py + script) wired to our async engine and models
   - [ ] 3.4 Author initial Alembic migration establishing tables + indexes + constraints (LangGraph checkpoint tables included; claim_event explicitly absent)
   - [ ] 3.5 Persistence engine: async SQLAlchemy engine + scoped session factory from Settings (persistence/engine.py)
   - [ ] 3.6 ORM models: SQLAlchemy 2 declarative models with pgvector, unique constraints, relationships (persistence/models.py)
