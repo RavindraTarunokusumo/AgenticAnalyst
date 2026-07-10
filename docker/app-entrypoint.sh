@@ -1,7 +1,9 @@
 #!/bin/sh
 set -eu
 
-case "${APP_PROCESS_MODE:-api}" in
+MODE="${APP_PROCESS_MODE:-api}"
+
+case "$MODE" in
   api | scheduler)
     ;;
   *)
@@ -10,13 +12,12 @@ case "${APP_PROCESS_MODE:-api}" in
     ;;
 esac
 
-# Task 6 replaces this readiness placeholder with the ASGI process. Task 5
-# starts APScheduler only in scheduler mode; no jobs exist in this image.
 touch /tmp/analyst-engine-ready
-echo "AnalystEngine container started in ${APP_PROCESS_MODE:-api} mode."
+echo "AnalystEngine starting in ${MODE} mode."
 
-trap 'exit 0' INT TERM
-while :; do
-  sleep 3600 &
-  wait $!
-done
+if [ "$MODE" = "api" ]; then
+    exec python -m analyst_engine.main
+else
+    exec python -m analyst_engine.main
+fi
+
