@@ -61,7 +61,7 @@ pytestmark = pytest.mark.skip(
 
 
 @pytest.fixture(scope="session")
-def pg_container():  # type: ignore[no-untyped-def]
+def pg_container():  # type: ignore[no-untyped-def, unused-ignore]
     if PostgresContainer is None:
         pytest.skip("testcontainers not installed or Docker unavailable")
     container = PostgresContainer(
@@ -79,7 +79,7 @@ def pg_container():  # type: ignore[no-untyped-def]
 
 
 @pytest.fixture(scope="session")
-def test_database_url(pg_container) -> str:  # type: ignore[no-untyped-def]
+def test_database_url(pg_container) -> str:  # type: ignore[no-untyped-def, unused-ignore]
     # testcontainers gives postgresql:// ; convert to asyncpg
     base = pg_container.get_connection_url()
     return base.replace("postgresql://", "postgresql+asyncpg://", 1)  # type: ignore[no-any-return]

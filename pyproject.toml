@@ -58,6 +58,7 @@ strict = true
 mypy_path = "src"
 packages = ["analyst_engine"]
 plugins = ["pydantic.mypy"]
+explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -74,6 +75,10 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = "tests.fixtures"
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "apscheduler.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

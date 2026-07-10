@@ -52,9 +52,9 @@ class DashScopeAdapter(ModelGateway):
         try:
             # Use json_object mode + post-validation for broad compatibility
             # (DashScope OpenAI-compatible endpoint supports response_format)
-            completion = await self._client.chat.completions.create(
+            completion = await self._client.chat.completions.create(  # type: ignore[call-overload]
                 model=model,
-                messages=messages,  # type: ignore[arg-type]
+                messages=messages,
                 response_format={"type": "json_object"},
                 temperature=0.1,
                 max_tokens=4000,
