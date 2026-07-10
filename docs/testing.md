@@ -17,12 +17,13 @@ Testing includes both execution and planning. Run automated tests and use test-p
 ```
 tests/
   test_config.py    # Settings validation (baseline)
+  test_compose_structure.py
 ```
 
 Additional layers are added as the harness grows:
 
 - `tests/unit/` — domain and adapter unit tests
-- `tests/integration/` — persistence and migration tests
+- `tests/integration/` — persistence and migration tests (Testcontainers + pgvector; skipped without Docker)
 - `tests/workflow/` — LangGraph workflow tests
 - `tests/api/` — FastAPI delivery tests
 - `tests/evaluation/` — opt-in temporal holdout evaluation (outside routine CI)

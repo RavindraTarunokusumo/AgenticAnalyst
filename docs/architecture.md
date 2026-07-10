@@ -28,31 +28,33 @@ for the later ingestion layer without turning it into a routine test dependency.
 
 ## Module Structure
 
-Document each major module as the codebase is created.
-
 ### Core / Infrastructure
 
-Infrastructure utilities, shared helpers, configuration.
+- `config.py`: typed Settings (pydantic-settings)
+- `persistence/engine.py`: async SQLAlchemy engine + session_scope
+- `persistence/checkpoints.py`: LangGraph AsyncPostgresSaver integration
+
+### Domain
+
+- `domain/models.py`: pure Pydantic contracts (Source, Article, BatchSummary, Brief, NarrativeStateVersion, ...). No infrastructure imports.
 
 ### Data / Persistence
 
-Persistence and state management.
+- `persistence/models.py`: SQLAlchemy 2 ORM (mirrors migration schema, pgvector)
+- `persistence/repositories.py`: session-scoped writes and lookups (idempotency, citation helpers)
+- `alembic/`: sole schema evolution (initial migration covers app tables + LangGraph checkpoints; no claim_event)
 
-### Services
+### Services / Workflows
 
-Application services and business workflows.
+(Added in later tasks)
 
 ### API / Delivery
 
-HTTP, gRPC, CLI, or other external surfaces.
-
-### UI / Presentation (if applicable)
-
-Frontend, templates, or presentation layer.
+(Added in later tasks)
 
 ### Integrations
 
-External systems, credentials, APIs, brokers, queues, cloud services.
+DashScope (via ModelGateway), LangSmith (opt-in tracing), SearXNG (search only).
 
 ## Data Flow
 
