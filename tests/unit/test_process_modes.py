@@ -65,7 +65,9 @@ async def test_scheduler_mode_registers_once_and_closes_runtime() -> None:
     )
 
     register.assert_awaited_once()
-    registered_scheduler, runner, registered_settings = register.await_args.args
+    await_args = register.await_args
+    assert await_args is not None
+    registered_scheduler, runner, registered_settings = await_args.args
     assert registered_scheduler is scheduler
     assert registered_settings is settings
     assert runner.gateway is runtime.gateway
