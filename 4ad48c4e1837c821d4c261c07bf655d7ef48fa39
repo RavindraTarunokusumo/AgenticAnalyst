@@ -1,0 +1,5 @@
+Task: Repair PostgreSQL integration URL normalization
+Summary: Request driver-neutral Testcontainers URL, normalize any returned PostgreSQL driver scheme to asyncpg, and add Docker-free regression coverage.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 1 review follow-up
+Validation: integration module 1 passed, 2 capability-skipped; scoped Ruff format/check and mypy passed; git diff --check
