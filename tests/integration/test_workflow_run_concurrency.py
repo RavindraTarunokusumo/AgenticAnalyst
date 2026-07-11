@@ -24,9 +24,11 @@ except ImportError:  # pragma: no cover
     PostgresContainer = None  # type: ignore[assignment, unused-ignore]
 
 
-class _PostgresContainer(Protocol):
-    def get_connection_url(self) -> str: ...
+class _ConnectionUrlProvider(Protocol):
+    def get_connection_url(self, driver: str | None = None) -> str: ...
 
+
+class _PostgresContainer(_ConnectionUrlProvider, Protocol):
     def start(self) -> object: ...
 
     def stop(self) -> object: ...
@@ -52,9 +54,22 @@ def workflow_postgres() -> Iterator[_PostgresContainer]:
         container.stop()
 
 
-def _async_database_url(container: _PostgresContainer) -> str:
-    url = container.get_connection_url()
-    return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+def _async_database_url(container: _ConnectionUrlProvider) -> str:
+    url = container.get_connection_url(driver=None)
+    _, separator, connection = url.partition("://")
+    if not separator:
+        raise ValueError(f"invalid PostgreSQL connection URL: {url!r}")
+    return f"postgresql+asyncpg://{connection}"
+
+
+def test_async_database_url_normalizes_testcontainers_driver() -> None:
+    class FakeContainer:
+        def get_connection_url(self, driver: str | None = None) -> str:
+            return "postgresql+psycopg2://user:password@localhost:5432/database"
+
+    assert _async_database_url(FakeContainer()) == (
+        "postgresql+asyncpg://user:password@localhost:5432/database"
+    )
 
 
 def _apply_migrations(database_url: str) -> None:
