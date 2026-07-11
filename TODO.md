@@ -6,6 +6,16 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
+## Session: Runtime and Persistence Repair (2026-07-11)
+
+- [ ] Separate workflow-run creation from lifecycle updates and enforce valid transitions.
+- [ ] Add OpenRouter configuration and provider routing with offline contract tests.
+- [ ] Introduce shared runtime dependency wiring for API and scheduler modes.
+- [ ] Execute cadence graphs with stable run/checkpoint identity and truthful failure handling.
+- [ ] Replace hard-coded readiness and file health markers with database/migration-aware HTTP readiness.
+- [ ] Enable and repair persistence, workflow, API, migration, and Compose verification for this milestone.
+- [ ] Reconcile operational documentation and complete the full project quality gates.
+
 ## Session: Harness Design (2026-07-10)
 
 - [x] Write and validate the approved local-first technical harness specification.
