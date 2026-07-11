@@ -18,6 +18,7 @@ from analyst_engine.domain.models import (
     BatchSummary,
     Brief,
     Cadence,
+    Citation,
     Embedding,
     NarrativeStateVersion,
     Source,
@@ -295,9 +296,10 @@ async def list_batch_summaries_for_brief(
                 source_notes=r.source_notes,
                 entities=list(r.entities or []),
                 topics=list(r.topics or []),
-                citations=[  # best effort roundtrip
-                    type("C", (), c)() for c in (r.citations or [])
-                ],  # placeholder; real Citation constructed upstream
+                citations=[
+                    Citation(article_id=c["article_id"], excerpt=c.get("excerpt"))
+                    for c in (r.citations or [])
+                ],
                 created_at=r.created_at,
             )
         )
