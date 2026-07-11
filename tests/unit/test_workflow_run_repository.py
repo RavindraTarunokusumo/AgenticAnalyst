@@ -109,6 +109,8 @@ async def test_update_workflow_run_succeeds_from_running_with_stable_identity() 
     assert succeeded.status == WorkflowStatus.SUCCEEDED
     assert succeeded.id == running.id
     assert succeeded.idempotency_key == running.idempotency_key
+    statement = session.execute.await_args.args[0]
+    assert statement._for_update_arg is not None
 
 
 @pytest.mark.asyncio

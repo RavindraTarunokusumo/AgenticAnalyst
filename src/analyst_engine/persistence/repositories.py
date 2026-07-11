@@ -271,7 +271,9 @@ async def create_workflow_run(session: AsyncSession, run: WorkflowRun) -> Workfl
 
 async def update_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun:
     row = (
-        await session.execute(select(ORMWorkflowRun).where(ORMWorkflowRun.id == run.id))
+        await session.execute(
+            select(ORMWorkflowRun).where(ORMWorkflowRun.id == run.id).with_for_update()
+        )
     ).scalar_one_or_none()
     if row is None:
         raise WorkflowRunNotFoundError(f"workflow run not found: id={run.id}")
