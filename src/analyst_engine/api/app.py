@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import date
 from typing import Any
@@ -39,11 +39,11 @@ def get_settings() -> Settings:
 def create_app(
     *,
     settings_factory: Callable[[], Settings] = get_settings,
-    runtime_factory: Callable[[Settings], RuntimeDependencies] = create_runtime,
+    runtime_factory: Callable[[Settings], Awaitable[RuntimeDependencies]] = create_runtime,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        runtime = runtime_factory(settings_factory())
+        runtime = await runtime_factory(settings_factory())
         try:
             runner = WorkflowRunner(
                 runtime.settings,

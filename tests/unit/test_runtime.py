@@ -15,7 +15,8 @@ def _settings() -> Settings:
     )
 
 
-def test_create_runtime_constructs_complete_dependency_bundle() -> None:
+@pytest.mark.asyncio
+async def test_create_runtime_constructs_complete_dependency_bundle() -> None:
     settings = _settings()
     engine = Mock()
     session_factory = Mock()
@@ -29,7 +30,7 @@ def test_create_runtime_constructs_complete_dependency_bundle() -> None:
     session_factory_builder = Mock(return_value=session_factory)
     gateway_factory = Mock(return_value=gateway)
 
-    runtime = create_runtime(
+    runtime = await create_runtime(
         settings,
         engine_factory=engine_factory,
         session_factory_builder=session_factory_builder,
@@ -48,6 +49,22 @@ def test_create_runtime_constructs_complete_dependency_bundle() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_runtime_disposes_engine_when_dependency_construction_fails() -> None:
+    engine = Mock()
+    engine.dispose = AsyncMock()
+
+    with pytest.raises(RuntimeError, match="gateway failed"):
+        await create_runtime(
+            _settings(),
+            engine_factory=Mock(return_value=engine),
+            session_factory_builder=Mock(return_value=Mock()),
+            gateway_factory=Mock(side_effect=RuntimeError("gateway failed")),
+        )
+
+    engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_runtime_close_disposes_owned_engine_once() -> None:
     engine = Mock()
     engine.dispose = AsyncMock()
@@ -63,3 +80,22 @@ async def test_runtime_close_disposes_owned_engine_once() -> None:
     await runtime.close()
 
     engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_runtime_close_can_retry_after_disposal_fails() -> None:
+    engine = Mock()
+    engine.dispose = AsyncMock(side_effect=[RuntimeError("dispose failed"), None])
+    runtime = RuntimeDependencies(
+        settings=_settings(),
+        engine=engine,
+        session_factory=Mock(),
+        gateway=Mock(),
+        checkpointer_factory=Mock(),
+    )
+
+    with pytest.raises(RuntimeError, match="dispose failed"):
+        await runtime.close()
+    await runtime.close()
+
+    assert engine.dispose.await_count == 2

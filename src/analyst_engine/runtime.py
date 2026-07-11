@@ -39,11 +39,11 @@ class RuntimeDependencies:
         """Dispose owned resources once, including repeated shutdown requests."""
         if self._closed:
             return
-        self._closed = True
         await self.engine.dispose()
+        self._closed = True
 
 
-def create_runtime(
+async def create_runtime(
     settings: Settings,
     *,
     engine_factory: Callable[[Settings], AsyncEngine] = get_async_engine,
@@ -55,10 +55,14 @@ def create_runtime(
 ) -> RuntimeDependencies:
     """Construct the complete dependency bundle from validated settings."""
     engine = engine_factory(settings)
-    return RuntimeDependencies(
-        settings=settings,
-        engine=engine,
-        session_factory=session_factory_builder(engine),
-        gateway=gateway_factory(settings),
-        checkpointer_factory=checkpointer_factory_builder(settings),
-    )
+    try:
+        return RuntimeDependencies(
+            settings=settings,
+            engine=engine,
+            session_factory=session_factory_builder(engine),
+            gateway=gateway_factory(settings),
+            checkpointer_factory=checkpointer_factory_builder(settings),
+        )
+    except Exception:
+        await engine.dispose()
+        raise

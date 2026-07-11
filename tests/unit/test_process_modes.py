@@ -31,7 +31,7 @@ def _runtime(settings: Settings) -> Mock:
 def test_api_mode_uses_complete_runtime_without_registering_schedules() -> None:
     settings = _settings(ProcessMode.API)
     runtime = _runtime(settings)
-    runtime_factory = Mock(return_value=runtime)
+    runtime_factory = AsyncMock(return_value=runtime)
 
     app = create_app(
         settings_factory=lambda: settings,
@@ -44,7 +44,7 @@ def test_api_mode_uses_complete_runtime_without_registering_schedules() -> None:
         assert app.state.runner.session_factory is runtime.session_factory
         assert app.state.runner.checkpointer_factory is runtime.checkpointer_factory
 
-    runtime_factory.assert_called_once_with(settings)
+    runtime_factory.assert_awaited_once_with(settings)
     runtime.close.assert_awaited_once()
 
 
@@ -58,7 +58,7 @@ async def test_scheduler_mode_registers_once_and_closes_runtime() -> None:
 
     await run_scheduler(
         settings_factory=lambda: settings,
-        runtime_factory=Mock(return_value=runtime),
+        runtime_factory=AsyncMock(return_value=runtime),
         scheduler_factory=Mock(return_value=scheduler),
         schedule_registrar=register,
         wait_forever=wait_forever,
@@ -86,11 +86,31 @@ async def test_scheduler_closes_runtime_when_registration_fails() -> None:
     with pytest.raises(RuntimeError, match="registration failed"):
         await run_scheduler(
             settings_factory=lambda: settings,
-            runtime_factory=Mock(return_value=runtime),
+            runtime_factory=AsyncMock(return_value=runtime),
             scheduler_factory=Mock(return_value=scheduler),
             schedule_registrar=register,
         )
 
     scheduler.start.assert_not_called()
     scheduler.shutdown.assert_not_called()
+    runtime.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_closes_runtime_when_shutdown_fails() -> None:
+    settings = _settings(ProcessMode.SCHEDULER)
+    runtime = _runtime(settings)
+    scheduler = Mock()
+    scheduler.shutdown.side_effect = RuntimeError("shutdown failed")
+
+    with pytest.raises(RuntimeError, match="shutdown failed"):
+        await run_scheduler(
+            settings_factory=lambda: settings,
+            runtime_factory=AsyncMock(return_value=runtime),
+            scheduler_factory=Mock(return_value=scheduler),
+            schedule_registrar=AsyncMock(),
+            wait_forever=AsyncMock(return_value=None),
+        )
+
+    scheduler.shutdown.assert_called_once_with()
     runtime.close.assert_awaited_once()

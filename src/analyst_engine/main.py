@@ -30,7 +30,7 @@ async def _wait_forever() -> None:
 async def run_scheduler(
     *,
     settings_factory: Callable[[], Settings] = Settings,
-    runtime_factory: Callable[[Settings], RuntimeDependencies] = create_runtime,
+    runtime_factory: Callable[[Settings], Awaitable[RuntimeDependencies]] = create_runtime,
     scheduler_factory: Callable[[], AsyncIOScheduler] = AsyncIOScheduler,
     schedule_registrar: Callable[
         [AsyncIOScheduler, WorkflowRunner, Settings], Awaitable[None]
@@ -38,7 +38,7 @@ async def run_scheduler(
     wait_forever: Callable[[], Awaitable[None]] = _wait_forever,
 ) -> None:
     settings = settings_factory()
-    runtime = runtime_factory(settings)
+    runtime = await runtime_factory(settings)
     scheduler: AsyncIOScheduler | None = None
     started = False
     try:
@@ -54,9 +54,11 @@ async def run_scheduler(
         started = True
         await wait_forever()
     finally:
-        if scheduler is not None and started:
-            scheduler.shutdown()
-        await runtime.close()
+        try:
+            if scheduler is not None and started:
+                scheduler.shutdown()
+        finally:
+            await runtime.close()
 
 
 if __name__ == "__main__":
