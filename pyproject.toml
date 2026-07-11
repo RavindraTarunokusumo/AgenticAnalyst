@@ -85,6 +85,9 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 addopts = "--cov=src/analyst_engine --cov-report=term-missing"
+markers = [
+    "live_openrouter: opt-in smoke test that contacts OpenRouter only when explicitly enabled",
+]
 
 [tool.coverage.run]
 source = ["src/analyst_engine"]

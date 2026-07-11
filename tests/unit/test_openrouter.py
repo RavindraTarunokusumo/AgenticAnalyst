@@ -1,6 +1,10 @@
 """Offline contract tests for the OpenRouter model adapter."""
 
+import hashlib
+import hmac
 import json
+import os
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -20,13 +24,13 @@ class Result(BaseModel):
 
 
 def _settings(**overrides: object) -> Settings:
-    values = {
+    values: dict[str, Any] = {
         "model_provider": "openrouter",
         "openrouter_api_key": "test-openrouter-key",
         "database_url": _DATABASE_URL,
     }
     values.update(overrides)
-    return Settings(**values)  # type: ignore[arg-type]
+    return Settings(**values)
 
 
 def _adapter(handler: httpx.AsyncBaseTransport) -> OpenRouterAdapter:
@@ -57,10 +61,31 @@ def test_openrouter_routes_frontier_and_batch_models() -> None:
     assert adapter.get_model_for_task(ModelTask.BATCH_SUMMARY) == "cohere/north-mini-code:free"
 
 
+def test_openrouter_routes_configured_alternative_models() -> None:
+    adapter = OpenRouterAdapter(
+        _settings(
+            openrouter_frontier_model="nvidia/nemotron-3-ultra-550b-a55b:free",
+            openrouter_batch_summary_model="google/gemma-4-31b-it:free",
+        )
+    )
+
+    assert (
+        adapter.get_model_for_task(ModelTask.FRONTIER_DAILY)
+        == "nvidia/nemotron-3-ultra-550b-a55b:free"
+    )
+    assert adapter.get_model_for_task(ModelTask.BATCH_SUMMARY) == "google/gemma-4-31b-it:free"
+
+
 @pytest.mark.asyncio
 async def test_openrouter_validates_structured_output_and_sends_correlation_header() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.scheme == "https"
+        assert request.url.host == "openrouter.ai"
+        assert request.url.path == "/api/v1/chat/completions"
         assert request.headers["x-correlation-id"] == "corr-123"
+        actual_auth_digest = hashlib.sha256(request.headers["authorization"].encode()).digest()
+        expected_auth_digest = hashlib.sha256(b"Bearer test-openrouter-key").digest()
+        assert hmac.compare_digest(actual_auth_digest, expected_auth_digest)
         body = json.loads(request.content)
         assert body["model"] == "tencent/hy3:free"
         return httpx.Response(
@@ -163,3 +188,30 @@ async def test_openrouter_rejects_invalid_structured_output_as_terminal() -> Non
             output_schema=Result,
             correlation_id="corr-invalid",
         )
+
+
+@pytest.mark.live_openrouter
+@pytest.mark.asyncio
+async def test_openrouter_live_structured_output_smoke() -> None:
+    if os.getenv("RUN_OPENROUTER_LIVE_SMOKE") != "1":
+        pytest.skip("set RUN_OPENROUTER_LIVE_SMOKE=1 to enable the live smoke test")
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        pytest.skip("OPENROUTER_API_KEY is not available")
+
+    adapter = OpenRouterAdapter(
+        _settings(
+            openrouter_api_key=api_key,
+            openrouter_batch_summary_model=os.getenv(
+                "OPENROUTER_BATCH_SUMMARY_MODEL", "cohere/north-mini-code:free"
+            ),
+        )
+    )
+    result, _ = await adapter.generate(
+        task=ModelTask.BATCH_SUMMARY,
+        messages=[{"role": "user", "content": "Return JSON with answer set to ok."}],
+        output_schema=Result,
+        correlation_id="live-openrouter-smoke",
+    )
+
+    assert cast(Result, result).answer == "ok"
