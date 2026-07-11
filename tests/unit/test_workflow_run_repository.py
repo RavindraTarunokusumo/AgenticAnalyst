@@ -87,6 +87,31 @@ async def test_update_workflow_run_updates_exact_row_and_returns_refreshed_domai
 
 
 @pytest.mark.asyncio
+async def test_update_workflow_run_succeeds_from_running_with_stable_identity() -> None:
+    running = WorkflowRun(
+        cadence=Cadence.DAILY,
+        idempotency_key="daily:2026-07-11",
+        status=WorkflowStatus.RUNNING,
+    )
+    row = _orm_run(running)
+    result = Mock()
+    result.scalar_one_or_none.return_value = row
+    session = Mock()
+    session.execute = AsyncMock(return_value=result)
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+
+    succeeded = await update_workflow_run(
+        session,
+        running.model_copy(update={"status": WorkflowStatus.SUCCEEDED}),
+    )
+
+    assert succeeded.status == WorkflowStatus.SUCCEEDED
+    assert succeeded.id == running.id
+    assert succeeded.idempotency_key == running.idempotency_key
+
+
+@pytest.mark.asyncio
 async def test_update_workflow_run_never_inserts_missing_row() -> None:
     run = WorkflowRun(cadence=Cadence.DAILY, idempotency_key="daily:missing")
     result = Mock()
