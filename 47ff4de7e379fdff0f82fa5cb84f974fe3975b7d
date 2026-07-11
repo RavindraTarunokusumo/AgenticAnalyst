@@ -1,0 +1,5 @@
+Task: Fix Task 3 process-mode test typing
+Summary: Explicitly narrowed AsyncMock await_args before inspecting scheduler registration arguments.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 3 quality follow-up
+Validation: ruff format/check focused test; mypy focused test; 4 process-mode tests
