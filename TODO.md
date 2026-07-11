@@ -10,7 +10,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 - [x] Separate workflow-run creation from lifecycle updates and enforce valid transitions. (`c717d74`)
 - [x] Add OpenRouter configuration and provider routing with offline contract tests. (`1f88183`)
-- [ ] Introduce shared runtime dependency wiring for API and scheduler modes.
+- [x] Introduce shared runtime dependency wiring for API and scheduler modes. (`3600a6a`)
 - [ ] Execute cadence graphs with stable run/checkpoint identity and truthful failure handling.
 - [ ] Replace hard-coded readiness and file health markers with database/migration-aware HTTP readiness.
 - [ ] Enable and repair persistence, workflow, API, migration, and Compose verification for this milestone.
