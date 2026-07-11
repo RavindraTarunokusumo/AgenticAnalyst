@@ -1,0 +1,5 @@
+Task: Runtime and Persistence Repair Task 4
+Summary: Execute cadence-correct checkpointed graphs with stable workflow identity, durable lifecycle transitions, redacted failures, and citation lineage.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 4
+Validation: ruff scoped; mypy scoped strict; 15 scoped workflow tests
