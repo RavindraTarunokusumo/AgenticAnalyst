@@ -8,6 +8,7 @@ from .gateway import (
     RetryableModelError,
     TerminalModelError,
 )
+from .openrouter import OpenRouterAdapter
 
 __all__ = [
     "ModelGateway",
@@ -16,4 +17,5 @@ __all__ = [
     "ModelError",
     "RetryableModelError",
     "TerminalModelError",
+    "OpenRouterAdapter",
 ]

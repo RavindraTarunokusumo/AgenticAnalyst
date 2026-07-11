@@ -18,6 +18,7 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_DASHSCOPE_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 _HTTP_URL_ADAPTER = TypeAdapter(HttpUrl)
 
 
@@ -26,6 +27,13 @@ class ProcessMode(StrEnum):
 
     API = "api"
     SCHEDULER = "scheduler"
+
+
+class ModelProvider(StrEnum):
+    """Supported model gateway providers."""
+
+    DASHSCOPE = "dashscope"
+    OPENROUTER = "openrouter"
 
 
 class Settings(BaseSettings):
@@ -38,12 +46,33 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    dashscope_api_key: SecretStr = Field(
+    model_provider: ModelProvider = Field(
+        default=ModelProvider.DASHSCOPE,
+        description="Model gateway provider.",
+    )
+    dashscope_api_key: SecretStr | None = Field(
+        default=None,
         description="DashScope API key for OpenAI-compatible endpoint access.",
     )
     dashscope_base_url: str = Field(
         default=DEFAULT_DASHSCOPE_BASE_URL,
         description="DashScope OpenAI-compatible base URL.",
+    )
+    openrouter_api_key: SecretStr | None = Field(
+        default=None,
+        description="OpenRouter API key for OpenAI-compatible endpoint access.",
+    )
+    openrouter_base_url: str = Field(
+        default=DEFAULT_OPENROUTER_BASE_URL,
+        description="OpenRouter OpenAI-compatible base URL.",
+    )
+    openrouter_frontier_model: str = Field(
+        default="tencent/hy3:free",
+        description="OpenRouter model for frontier synthesis.",
+    )
+    openrouter_batch_summary_model: str = Field(
+        default="cohere/north-mini-code:free",
+        description="OpenRouter model for batch summaries.",
     )
 
     database_url: PostgresDsn = Field(
@@ -112,25 +141,43 @@ class Settings(BaseSettings):
         default=3,
         description="Max retries for retryable provider errors.",
     )
+    openrouter_timeout_seconds: float = Field(
+        default=120.0,
+        gt=0,
+        description="Timeout for OpenRouter calls (seconds).",
+    )
+    openrouter_max_retries: int = Field(
+        default=3,
+        ge=0,
+        description="Max retries for retryable OpenRouter errors.",
+    )
 
     @field_validator("dashscope_api_key")
     @classmethod
-    def validate_dashscope_api_key(cls, value: SecretStr) -> SecretStr:
-        if not value.get_secret_value().strip():
+    def validate_dashscope_api_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not value.get_secret_value().strip():
             msg = "dashscope_api_key must not be empty"
             raise ValueError(msg)
         return value
 
-    @field_validator("dashscope_base_url")
+    @field_validator("openrouter_api_key")
+    @classmethod
+    def validate_openrouter_api_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not value.get_secret_value().strip():
+            msg = "openrouter_api_key must not be empty"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("dashscope_base_url", "openrouter_base_url")
     @classmethod
     def validate_dashscope_base_url(cls, value: str) -> str:
         try:
             parsed_url = _HTTP_URL_ADAPTER.validate_python(value)
         except ValidationError as error:
-            msg = "dashscope_base_url must be a valid HTTPS URL with a host"
+            msg = "provider base URL must be a valid HTTPS URL with a host"
             raise ValueError(msg) from error
         if parsed_url.scheme != "https":
-            msg = "dashscope_base_url must be an HTTPS URL"
+            msg = "provider base URL must be an HTTPS URL"
             raise ValueError(msg)
         return str(parsed_url).rstrip("/")
 
@@ -154,6 +201,16 @@ class Settings(BaseSettings):
     def validate_langsmith_credentials(self) -> Self:
         if self.langsmith_tracing and self.langsmith_api_key is None:
             msg = "langsmith_api_key is required when langsmith_tracing is enabled"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def validate_provider_credentials(self) -> Self:
+        if self.model_provider is ModelProvider.DASHSCOPE and self.dashscope_api_key is None:
+            msg = "dashscope_api_key is required when model_provider is dashscope"
+            raise ValueError(msg)
+        if self.model_provider is ModelProvider.OPENROUTER and self.openrouter_api_key is None:
+            msg = "openrouter_api_key is required when model_provider is openrouter"
             raise ValueError(msg)
         return self
 

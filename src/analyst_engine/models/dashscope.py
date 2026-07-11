@@ -22,6 +22,8 @@ class DashScopeAdapter(ModelGateway):
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        if settings.dashscope_api_key is None:
+            raise ValueError("dashscope_api_key is required for DashScopeAdapter")
         self._client = AsyncOpenAI(
             api_key=settings.dashscope_api_key.get_secret_value(),
             base_url=settings.dashscope_base_url,
