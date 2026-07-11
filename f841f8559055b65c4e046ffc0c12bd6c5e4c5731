@@ -1,0 +1,5 @@
+Task: Make workflow-run transitions concurrency-safe
+Summary: Lock workflow-run rows before transition validation and add unit plus capability-gated PostgreSQL durability/concurrency coverage.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 1 review findings P1/P2
+Validation: unit repository tests 12 passed; PostgreSQL integration 2 capability-skipped (Docker unavailable); scoped Ruff format/check and mypy passed; git diff --check
