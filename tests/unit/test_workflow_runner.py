@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 import pytest
+from langgraph.checkpoint.memory import MemorySaver
 
 from analyst_engine.domain.models import (
     BatchSummary,
@@ -16,6 +17,8 @@ from analyst_engine.domain.models import (
     WorkflowStatus,
 )
 from analyst_engine.models.gateway import RetryableModelError
+from analyst_engine.models.gateway import TerminalModelError
+from analyst_engine.models.gateway import ModelUsage
 from analyst_engine.workflows.runner import WorkflowRunner
 
 
@@ -214,6 +217,117 @@ async def test_checkpoint_context_failure_never_marks_run_succeeded(
     with pytest.raises(RuntimeError, match="database password"):
         await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
 
+    assert [call.args[0].status for call in update.await_args_list] == [
+        WorkflowStatus.RUNNING,
+        WorkflowStatus.FAILED,
+    ]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [TerminalModelError("secret terminal payload"), ValueError("malformed secret payload")],
+)
+async def test_terminal_or_malformed_provider_output_is_failed_and_reraised(
+    monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    runner = _runner()
+    run = WorkflowRun(cadence=Cadence.DAILY, idempotency_key="daily:2026-07-12:2026-07-12")
+    running = run.model_copy(update={"status": WorkflowStatus.RUNNING})
+    failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
+    monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
+    update = AsyncMock(side_effect=[running, failed])
+    monkeypatch.setattr(runner, "_update_run", update)
+    monkeypatch.setattr(
+        "analyst_engine.workflows.runner.GRAPH_BUILDERS",
+        {Cadence.DAILY: Mock(return_value=_GraphBuilder(_CompiledGraph(error=error)))},
+    )
+
+    with pytest.raises(type(error)):
+        await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
+
+    statuses = [call.args[0].status for call in update.await_args_list]
+    assert statuses == [WorkflowStatus.RUNNING, WorkflowStatus.FAILED]
+    summary = update.await_args_list[-1].args[0].error_summary
+    assert summary is not None
+    assert "secret" not in summary
+
+
+async def test_success_lifecycle_update_failure_attempts_failed_and_reraises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _runner()
+    run = WorkflowRun(cadence=Cadence.DAILY, idempotency_key="daily:2026-07-12:2026-07-12")
+    running = run.model_copy(update={"status": WorkflowStatus.RUNNING})
+    failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
+    compiled = _CompiledGraph()
+    monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
+    update = AsyncMock(side_effect=[running, RuntimeError("database password"), failed])
+    monkeypatch.setattr(runner, "_update_run", update)
+    monkeypatch.setattr(
+        "analyst_engine.workflows.runner.GRAPH_BUILDERS",
+        {Cadence.DAILY: Mock(return_value=_GraphBuilder(compiled))},
+    )
+
+    with pytest.raises(RuntimeError, match="database password"):
+        await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
+
+    assert len(compiled.calls) == 1
+    assert [call.args[0].status for call in update.await_args_list] == [
+        WorkflowStatus.RUNNING,
+        WorkflowStatus.SUCCEEDED,
+        WorkflowStatus.FAILED,
+    ]
+    assert update.await_args_list[-1].args[0].error_summary == (
+        "RuntimeError: workflow execution failed"
+    )
+
+
+async def test_analytical_commit_failure_rolls_back_and_marks_run_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Mock()
+    session.commit = AsyncMock(side_effect=RuntimeError("database password"))
+    session.rollback = AsyncMock()
+    session.close = AsyncMock()
+    session_factory = Mock(return_value=session)
+    gateway = Mock()
+
+    async def generate(**kwargs: Any) -> tuple[Any, ModelUsage]:
+        schema = kwargs["output_schema"]
+        return (
+            schema(
+                brief_content="brief",
+                narrative_state={"theme": "test"},
+                change_log=["changed"],
+            ),
+            ModelUsage(model="fake"),
+        )
+
+    gateway.generate = generate
+
+    @asynccontextmanager
+    async def checkpointer_factory():
+        yield MemorySaver()
+
+    runner = WorkflowRunner(Mock(), gateway, session_factory, checkpointer_factory)
+    run = WorkflowRun(cadence=Cadence.DAILY, idempotency_key="daily:2026-07-12:2026-07-12")
+    running = run.model_copy(update={"status": WorkflowStatus.RUNNING})
+    failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
+    monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
+    update = AsyncMock(side_effect=[running, failed])
+    monkeypatch.setattr(runner, "_update_run", update)
+    save_narrative = AsyncMock()
+    save_brief = AsyncMock()
+    monkeypatch.setattr("analyst_engine.workflows.graphs.save_narrative_version", save_narrative)
+    monkeypatch.setattr("analyst_engine.workflows.graphs.save_brief", save_brief)
+
+    with pytest.raises(RuntimeError, match="database password"):
+        await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
+
+    save_narrative.assert_awaited_once()
+    save_brief.assert_awaited_once()
+    session.commit.assert_awaited_once()
+    session.rollback.assert_awaited_once()
     assert [call.args[0].status for call in update.await_args_list] == [
         WorkflowStatus.RUNNING,
         WorkflowStatus.FAILED,

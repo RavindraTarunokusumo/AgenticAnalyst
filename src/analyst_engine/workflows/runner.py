@@ -127,6 +127,14 @@ class WorkflowRunner:
             async with self.checkpointer_factory() as checkpointer:
                 graph = builder.compile(checkpointer=checkpointer)
                 await graph.ainvoke(state, config=config)
+            succeeded = running.model_copy(
+                update={
+                    "status": WorkflowStatus.SUCCEEDED,
+                    "error_summary": None,
+                    "completed_at": datetime.now(UTC),
+                }
+            )
+            return await self._update_run(succeeded)
         except Exception as error:
             failed = running.model_copy(
                 update={
@@ -138,15 +146,6 @@ class WorkflowRunner:
             with suppress(Exception):
                 await self._update_run(failed)
             raise
-
-        succeeded = running.model_copy(
-            update={
-                "status": WorkflowStatus.SUCCEEDED,
-                "error_summary": None,
-                "completed_at": datetime.now(UTC),
-            }
-        )
-        return await self._update_run(succeeded)
 
     async def run_daily(
         self,
