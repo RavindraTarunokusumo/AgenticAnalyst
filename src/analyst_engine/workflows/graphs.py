@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Any
+from uuid import uuid4
 
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel
@@ -82,11 +83,11 @@ async def _frontier_synthesis(
         content=frontier.brief_content,
         cited_batch_summary_ids=[s.id for s in inp.batch_summaries],
         cited_article_ids=[],  # populated upstream in real flow
-        created_by_run_id=inp.correlation_id,  # placeholder
+        created_by_run_id=uuid4(),  # placeholder; use real run UUID in full impl
     )
 
     narrative = NarrativeStateVersion(
-        created_by_run_id=inp.correlation_id,
+        created_by_run_id=uuid4(),  # placeholder; use real run UUID in full impl
         state=frontier.narrative_state,
         change_log=frontier.change_log,
     )
