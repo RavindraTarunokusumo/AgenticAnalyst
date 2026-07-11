@@ -1,0 +1,5 @@
+Task: Repair workflow-run persistence semantics
+Summary: Added distinct create/update operations, deterministic lifecycle errors, refreshed mapping, stable identity enforcement, and focused TDD coverage.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 1
+Validation: uv run pytest tests/unit/test_workflow_run_repository.py -q (11 passed); file-scoped ruff format/check; git diff --check
