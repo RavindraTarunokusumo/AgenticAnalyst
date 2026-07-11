@@ -1,90 +1,219 @@
 # Commands Reference
 
+## Prerequisites
+
+- [uv](https://docs.astral.sh/uv/) installed
+- Python 3.12 (managed by uv via `.python-version`)
+
 ## Setup
 
-(Define environment activation and dependency installation once the stack is chosen.)
-
-Generic examples:
+Install dependencies and create the local virtual environment:
 
 ```bash
-# Python example
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
-For Windows PowerShell:
+Copy the environment template and supply local values (never commit `.env`):
+
+```bash
+cp .env.example .env
+```
+
+On Windows PowerShell:
 
 ```powershell
-.venv\Scripts\activate
-pip install -r requirements.txt
+Copy-Item .env.example .env
 ```
 
-## Development Server
+Before starting Compose, set non-empty `POSTGRES_PASSWORD` and
+`SEARXNG_SECRET_KEY` values in `.env`. Compose deliberately refuses to start
+without them. Set `DATABASE_URL` to the corresponding `postgres` hostname URL
+before using later application tasks.
 
-(Replace with the actual project command once defined.)
+Activate the project environment (optional; `uv run` works without activation):
 
 ```bash
-# python main.py
-# npm run dev
-# cargo run
-# etc.
+source .venv/bin/activate
+```
+
+On Windows PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+## Routine Verification
+
+Run the full local quality gate sequence from the repository root:
+
+```bash
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy src tests
+uv run pytest
 ```
 
 ## Testing
 
+Run all tests with coverage:
+
 ```bash
-# pytest
-# npm test
-# cargo test
+uv run pytest
+```
+
+Run a single test file:
+
+```bash
+uv run pytest tests/test_config.py
+```
+
+Run a single test by name:
+
+```bash
+uv run pytest -k "rejects_missing_dashscope_api_key"
+```
+
+Stop on the first failure:
+
+```bash
+uv run pytest -x
 ```
 
 ## Lint and Format
 
-(Adapt to actual tools.)
+Check formatting:
 
 ```bash
-# ruff check . --fix && ruff format .
-# eslint . && prettier --write .
+uv run ruff format --check .
 ```
 
-## Database (once applicable)
-
-Initialize:
+Apply formatting:
 
 ```bash
-# python scripts/init_db.py
+uv run ruff format .
 ```
 
-Seed local data:
+Lint:
 
 ```bash
-# python scripts/seed_mock_db.py
+uv run ruff check .
 ```
 
-Reset local data:
+Lint with auto-fix:
 
 ```bash
-# python scripts/reset_db.py
+uv run ruff check . --fix
 ```
+
+Type check:
+
+```bash
+uv run mypy src tests
+```
+
+## Pre-commit Hooks
+
+Install hooks once per clone:
+
+```bash
+uv run pre-commit install
+```
+
+Run all hooks against the working tree:
+
+```bash
+uv run pre-commit run --all-files
+```
+
+## Development Server
+
+Start the local stack (PostgreSQL/pgvector + SearXNG + app):
+
+```bash
+docker compose up --build --wait
+```
+
+The app now supports two modes from the same image:
+
+- API (default): `uvicorn` FastAPI server exposing health, readiness, manual triggers and read-only briefing endpoints.
+- Scheduler: APScheduler that registers daily/weekly/monthly jobs (idempotent).
+
+```bash
+APP_PROCESS_MODE=scheduler docker compose up --build --wait
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:APP_PROCESS_MODE = "scheduler"
+docker compose up --build --wait
+Remove-Item Env:APP_PROCESS_MODE
+```
+
+The application image installs Playwright Chromium during its build so future
+Crawl4AI ingestion can use the same image without a browser-install step.
+
+## Database
+
+The Compose stack starts PostgreSQL 16 with pgvector. Database migrations are
+introduced in a later harness task.
 
 ## Logs
 
+Follow all local-service logs:
+
 ```bash
-# tail -f logs/*.log
+docker compose logs --follow app postgres searxng
+```
+
+Stop the stack while retaining its named volumes:
+
+```bash
+docker compose down
+```
+
+Reset all local PostgreSQL and SearXNG state (destructive):
+
+```bash
+docker compose down --volumes --remove-orphans
+```
+
+Rotate only the persisted SearXNG secret while retaining PostgreSQL data:
+
+```bash
+docker compose down
+docker volume rm analyst-engine_searxng_config
+# Set a replacement SEARXNG_SECRET_KEY in .env before restarting.
+docker compose up --build --wait
+```
+
+The SearXNG bootstrap writes `SEARXNG_SECRET_KEY` only when the configuration
+volume is empty. Editing the variable then restarting leaves the existing
+secret unchanged. With a custom Compose project name, use `docker compose
+volume ls` to identify the corresponding SearXNG configuration volume.
+
+Inspect service health and startup ordering:
+
+```bash
+docker compose ps
 ```
 
 ## Environment Variables
 
-List required variables here as they are introduced:
+Required and optional settings are documented in `.env.example`. At minimum, runtime startup requires:
 
 ```
-APP_ENV=development
-DATABASE_URL=
-API_KEY=
+DASHSCOPE_API_KEY=
+DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+POSTGRES_DB=analyst_engine
+POSTGRES_USER=analyst_engine
+POSTGRES_PASSWORD=<local-password>
+DATABASE_URL=postgresql+asyncpg://<user>:<password>@postgres:5432/analyst_engine
+SEARXNG_SECRET_KEY=<local-secret>
+SEARXNG_PUBLIC_BASE_URL=http://localhost:8080/
 ```
 
-Never commit real secrets.
+LangSmith, scheduler mode, and temporal evaluation settings are also named in `.env.example`. Never commit real secrets.
 
 ## Git Notes
 

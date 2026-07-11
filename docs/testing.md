@@ -6,51 +6,86 @@ Testing includes both execution and planning. Run automated tests and use test-p
 
 ## Prerequisites
 
-- activate the project environment
-- run commands from repo root
-- mock external services
-- avoid real credentials in tests
+- [uv](https://docs.astral.sh/uv/) installed
+- Dependencies installed: `uv sync`
+- Run commands from the repository root
+- Mock external services; do not contact DashScope, LangSmith, or live data sources in routine tests
+- Avoid real credentials in tests; supply fixture values directly to `Settings` or via test-local environment overrides
 
 ## Test Layout
 
-Document test groups as the project grows:
-- API / delivery tests
-- service / domain tests
-- persistence tests
-- integration tests
-- frontend tests (if any)
-- fixtures / helpers
+```
+tests/
+  test_config.py    # Settings validation (baseline)
+  test_compose_structure.py
+```
+
+Additional layers are added as the harness grows:
+
+- `tests/unit/` — domain and adapter unit tests
+- `tests/integration/` — persistence and migration tests (Testcontainers + pgvector; skipped without Docker)
+- `tests/workflow/` — LangGraph workflow tests
+- `tests/api/` — FastAPI delivery tests
+- `tests/evaluation/` — opt-in temporal holdout evaluation (outside routine CI)
 
 ## Core Fixtures
 
-Document shared fixtures and helpers once defined.
+Baseline tests construct `Settings` instances inline with deterministic fixture values. Shared fixtures and factories are introduced in later harness tasks.
 
 ## Running Tests
 
-(Define actual commands once the test runner and stack are chosen.)
+Run all tests with coverage:
 
-Example placeholders:
-
-Run all tests:
 ```bash
-# pytest
-# npm test
-# cargo test
-# etc.
+uv run pytest
 ```
 
-Run one file / one test / by keyword / stop on first failure — adapt to actual tooling.
+Run one file:
+
+```bash
+uv run pytest tests/test_config.py
+```
+
+Run one test by keyword:
+
+```bash
+uv run pytest -k "loads_with_required"
+```
+
+Stop on first failure:
+
+```bash
+uv run pytest -x
+```
+
+Show verbose output:
+
+```bash
+uv run pytest -v
+```
 
 ## Validation Workflow
 
-Default sequence before commit (adapt to stack):
+Default sequence before commit:
+
 ```bash
-# lint + format + test commands here
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy src tests
+uv run pytest
+```
+
+Install and run pre-commit hooks for formatting, linting, whitespace checks, and secret detection:
+
+```bash
+uv run pre-commit install
+uv run pre-commit run --all-files
 ```
 
 ## When To Invoke Test Planning Tools
 
 Invoke after implementation and before PR-ready when:
+
 - behavior changed
 - API changed
 - state transitions changed
@@ -63,6 +98,7 @@ Do not invoke for trivial copy, docs-only, or tiny localized edits.
 ## Coverage Expectations
 
 Meaningful changes should cover:
+
 - happy path
 - failure path
 - boundary conditions
@@ -70,6 +106,8 @@ Meaningful changes should cover:
 - persistence effects
 - external service mocks
 - regression case, if bug fix
+
+Baseline settings tests demonstrate the expected pattern: deterministic fixture values, behavior-oriented test names, and field-specific validation error assertions.
 
 ## Test Writing Rules
 

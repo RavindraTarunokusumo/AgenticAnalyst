@@ -1,0 +1,32 @@
+# Secrets and repository metadata must never enter an application build context.
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+
+# Local environments, caches, and generated test/build output.
+.venv
+venv
+ENV
+__pycache__
+*.py[cod]
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.coverage
+.coverage.*
+htmlcov
+dist
+build
+*.egg-info
+playwright-report
+test-results
+.playwright
+
+# Local application and database data.
+postgres-data
+pgdata
+*.db
+*.sqlite
+*.sqlite3

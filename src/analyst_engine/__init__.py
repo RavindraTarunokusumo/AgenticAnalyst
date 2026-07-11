@@ -1,0 +1,1 @@
+"""AnalystEngine modular monolith package."""
