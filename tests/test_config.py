@@ -1,6 +1,7 @@
 """Settings configuration validation tests."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -75,8 +76,8 @@ def test_settings_rejects_empty_dashscope_api_key() -> None:
         Settings(dashscope_api_key="   ", database_url=_VALID_DATABASE_URL)
 
     errors = exc_info.value.errors()
-    assert errors[0]["loc"] == ("dashscope_api_key",)
-    assert "dashscope_api_key must not be empty" in errors[0]["msg"]
+    assert errors[0]["loc"] == ()
+    assert "dashscope_api_key is required" in errors[0]["msg"]
 
 
 @pytest.mark.parametrize(
@@ -171,6 +172,42 @@ def test_settings_loads_openrouter_provider_defaults_without_dashscope_key() -> 
 def test_settings_requires_key_for_selected_provider() -> None:
     with pytest.raises(ValidationError, match="openrouter_api_key is required"):
         Settings(model_provider="openrouter", database_url=_VALID_DATABASE_URL)
+
+
+def test_settings_allows_blank_inactive_openrouter_key_for_dashscope() -> None:
+    settings = Settings(
+        model_provider="dashscope",
+        dashscope_api_key=_VALID_DASHSCOPE_KEY,
+        openrouter_api_key="",
+        database_url=_VALID_DATABASE_URL,
+    )
+
+    assert settings.openrouter_api_key is None
+
+
+def test_settings_allows_blank_inactive_dashscope_key_for_openrouter() -> None:
+    settings = Settings(
+        model_provider="openrouter",
+        dashscope_api_key="",
+        openrouter_api_key="test-openrouter-key",
+        database_url=_VALID_DATABASE_URL,
+    )
+
+    assert settings.dashscope_api_key is None
+
+
+@pytest.mark.parametrize(
+    "provider,key_field",
+    [("dashscope", "dashscope_api_key"), ("openrouter", "openrouter_api_key")],
+)
+def test_settings_rejects_blank_selected_provider_key(provider: str, key_field: str) -> None:
+    provider_settings: dict[str, Any] = {
+        "model_provider": provider,
+        "database_url": _VALID_DATABASE_URL,
+        key_field: "",
+    }
+    with pytest.raises(ValidationError, match=f"{key_field} is required"):
+        Settings(**provider_settings)
 
 
 def test_settings_never_exposes_openrouter_secret() -> None:

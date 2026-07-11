@@ -152,20 +152,13 @@ class Settings(BaseSettings):
         description="Max retries for retryable OpenRouter errors.",
     )
 
-    @field_validator("dashscope_api_key")
+    @field_validator("dashscope_api_key", "openrouter_api_key", mode="before")
     @classmethod
-    def validate_dashscope_api_key(cls, value: SecretStr | None) -> SecretStr | None:
-        if value is not None and not value.get_secret_value().strip():
-            msg = "dashscope_api_key must not be empty"
-            raise ValueError(msg)
-        return value
-
-    @field_validator("openrouter_api_key")
-    @classmethod
-    def validate_openrouter_api_key(cls, value: SecretStr | None) -> SecretStr | None:
-        if value is not None and not value.get_secret_value().strip():
-            msg = "openrouter_api_key must not be empty"
-            raise ValueError(msg)
+    def normalize_optional_provider_key(cls, value: object) -> object | None:
+        if isinstance(value, SecretStr):
+            return value if value.get_secret_value().strip() else None
+        if isinstance(value, str):
+            return value if value.strip() else None
         return value
 
     @field_validator("dashscope_base_url", "openrouter_base_url")
