@@ -2,11 +2,13 @@
 
 import asyncio
 import os
+from collections.abc import Awaitable, Callable
 
 import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from analyst_engine.config import ProcessMode, Settings
+from analyst_engine.runtime import RuntimeDependencies, create_runtime
 from analyst_engine.scheduling import register_schedules
 from analyst_engine.workflows.runner import WorkflowRunner
 
@@ -21,18 +23,40 @@ def run_api() -> None:
     )
 
 
-async def run_scheduler() -> None:
-    settings = Settings()
-    # Minimal wiring (real version would also create gateway + checkpointer)
-    runner = WorkflowRunner(settings, None, None, None)  # type: ignore[arg-type]
-    scheduler = AsyncIOScheduler()
-    await register_schedules(scheduler, runner, settings)
-    scheduler.start()
-    # Keep process alive
+async def _wait_forever() -> None:
+    await asyncio.Event().wait()
+
+
+async def run_scheduler(
+    *,
+    settings_factory: Callable[[], Settings] = Settings,
+    runtime_factory: Callable[[Settings], RuntimeDependencies] = create_runtime,
+    scheduler_factory: Callable[[], AsyncIOScheduler] = AsyncIOScheduler,
+    schedule_registrar: Callable[
+        [AsyncIOScheduler, WorkflowRunner, Settings], Awaitable[None]
+    ] = register_schedules,
+    wait_forever: Callable[[], Awaitable[None]] = _wait_forever,
+) -> None:
+    settings = settings_factory()
+    runtime = runtime_factory(settings)
+    scheduler: AsyncIOScheduler | None = None
+    started = False
     try:
-        await asyncio.Event().wait()
+        runner = WorkflowRunner(
+            runtime.settings,
+            runtime.gateway,
+            runtime.session_factory,
+            runtime.checkpointer_factory,
+        )
+        scheduler = scheduler_factory()
+        await schedule_registrar(scheduler, runner, settings)
+        scheduler.start()
+        started = True
+        await wait_forever()
     finally:
-        scheduler.shutdown()
+        if scheduler is not None and started:
+            scheduler.shutdown()
+        await runtime.close()
 
 
 if __name__ == "__main__":
