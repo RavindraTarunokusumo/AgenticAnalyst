@@ -9,7 +9,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 ## Session: Runtime and Persistence Repair (2026-07-11)
 
 - [x] Separate workflow-run creation from lifecycle updates and enforce valid transitions. (`c717d74`)
-- [ ] Add OpenRouter configuration and provider routing with offline contract tests.
+- [x] Add OpenRouter configuration and provider routing with offline contract tests. (`1f88183`)
 - [ ] Introduce shared runtime dependency wiring for API and scheduler modes.
 - [ ] Execute cadence graphs with stable run/checkpoint identity and truthful failure handling.
 - [ ] Replace hard-coded readiness and file health markers with database/migration-aware HTTP readiness.
