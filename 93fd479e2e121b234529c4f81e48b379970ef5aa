@@ -1,0 +1,5 @@
+Task: Normalize inactive provider credentials
+Summary: Treat blank provider keys as absent before requiring only the selected provider credential; added symmetric regression coverage.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 2 quality follow-up
+Validation: ruff format/check; mypy focused; pytest config and OpenRouter 31 passed, 1 skipped (live disabled)
