@@ -19,7 +19,11 @@ from analyst_engine.domain.models import (
 )
 from analyst_engine.models.gateway import ModelGateway, ModelTask
 from analyst_engine.persistence.engine import session_scope
-from analyst_engine.persistence.repositories import save_brief, save_narrative_version
+from analyst_engine.persistence.repositories import (
+    save_brief,
+    save_narrative_version,
+    save_prediction_expectation,
+)
 from analyst_engine.workflows.state import BriefGenerationInput, BriefGenerationOutput
 
 
@@ -39,6 +43,18 @@ async def _frontier_synthesis(
         Cadence.WEEKLY: ModelTask.FRONTIER_WEEKLY,
         Cadence.MONTHLY: ModelTask.FRONTIER_MONTHLY,
     }[inp.cadence]
+    summary_context = [
+        {
+            "id": str(summary.id),
+            "summary": summary.summary,
+            "source_notes": summary.source_notes,
+            "entities": summary.entities,
+            "topics": summary.topics,
+            "citations": [citation.model_dump(mode="json") for citation in summary.citations],
+        }
+        for summary in inp.batch_summaries
+    ]
+    current_state = inp.current_narrative.state if inp.current_narrative else None
     messages = [
         {
             "role": "system",
@@ -48,8 +64,9 @@ async def _frontier_synthesis(
             "role": "user",
             "content": (
                 f"Synthesize a {inp.cadence.value} brief for {inp.covered_start} "
-                f"to {inp.covered_end}. Use batch summaries "
-                f"{[str(s.id) for s in inp.batch_summaries]}."
+                f"to {inp.covered_end}. Batch summaries: {summary_context}. "
+                f"Prior briefs: {[b.content for b in inp.prior_briefs]}. "
+                f"Current narrative: {current_state}."
             ),
         },
     ]
@@ -67,6 +84,7 @@ async def _frontier_synthesis(
         )
     )
     narrative = NarrativeStateVersion(
+        parent_id=inp.current_narrative.id if inp.current_narrative else None,
         created_by_run_id=run_id,
         state=frontier.narrative_state,
         change_log=frontier.change_log,
@@ -110,16 +128,26 @@ def _build_graph(
 
     async def synthesize(state: dict[str, Any]) -> dict[str, Any]:
         summaries = [BatchSummary.model_validate(item) for item in state.get("batch_summaries", [])]
+        prior_briefs = [Brief.model_validate(item) for item in state.get("prior_briefs", [])]
+        current_narrative = (
+            NarrativeStateVersion.model_validate(state["current_narrative"])
+            if state.get("current_narrative") is not None
+            else None
+        )
         inp = BriefGenerationInput(
             cadence=cadence,
             covered_start=date.fromisoformat(str(state["covered_start"])),
             covered_end=date.fromisoformat(str(state["covered_end"])),
             batch_summaries=summaries,
+            prior_briefs=prior_briefs,
+            current_narrative=current_narrative,
             correlation_id=str(state["correlation_id"]),
         )
         output = await _frontier_synthesis(gateway, inp)
         async with session_scope(session_factory) as session:
             await save_narrative_version(session, output.proposed_narrative_version)
+            for expectation in output.proposed_expectations:
+                await save_prediction_expectation(session, expectation)
             await save_brief(session, output.brief)
         return {
             "brief": output.brief.model_dump(mode="python"),

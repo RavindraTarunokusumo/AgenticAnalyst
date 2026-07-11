@@ -11,13 +11,23 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from analyst_engine.config import Settings
-from analyst_engine.domain.models import BatchSummary, Cadence, WorkflowRun, WorkflowStatus
+from analyst_engine.domain.models import (
+    BatchSummary,
+    Brief,
+    Cadence,
+    NarrativeStateVersion,
+    WorkflowRun,
+    WorkflowStatus,
+)
 from analyst_engine.models.gateway import ModelError, ModelGateway
 from analyst_engine.persistence.engine import session_scope
 from analyst_engine.persistence.repositories import (
     WorkflowRunAlreadyExistsError,
+    claim_pending_workflow_run,
     create_workflow_run,
+    get_latest_narrative_version,
     get_workflow_run_by_idempotency,
+    list_prior_briefs,
     update_workflow_run,
 )
 from analyst_engine.workflows.graphs import (
@@ -77,6 +87,25 @@ class WorkflowRunner:
         async with session_scope(self.session_factory) as session:
             return await update_workflow_run(session, run)
 
+    async def _claim_run(self, run: WorkflowRun) -> WorkflowRun | None:
+        candidate = run.model_copy(update={"checkpoint_ref": str(run.id)})
+        async with session_scope(self.session_factory) as session:
+            return await claim_pending_workflow_run(session, candidate)
+
+    async def _load_context(
+        self, cadence: Cadence, start: date
+    ) -> tuple[NarrativeStateVersion | None, list[Brief]]:
+        prior_cadence = {
+            Cadence.DAILY: Cadence.DAILY,
+            Cadence.WEEKLY: Cadence.DAILY,
+            Cadence.MONTHLY: Cadence.WEEKLY,
+        }[cadence]
+        async with session_scope(self.session_factory) as session:
+            return (
+                await get_latest_narrative_version(session),
+                await list_prior_briefs(session, prior_cadence, start),
+            )
+
     @staticmethod
     def _failure_summary(error: Exception) -> str:
         if isinstance(error, ModelError):
@@ -93,16 +122,19 @@ class WorkflowRunner:
         run = await self._ensure_run(cadence, start, end)
         if run.status in _TERMINAL_STATUSES:
             return run
+        if run.status is WorkflowStatus.RUNNING:
+            return run
+        running = await self._claim_run(run)
+        if running is None:
+            async with session_scope(self.session_factory) as session:
+                claimed_elsewhere = await get_workflow_run_by_idempotency(
+                    session, run.idempotency_key
+                )
+            if claimed_elsewhere is None:
+                raise RuntimeError("workflow run claim lost without a durable run")
+            return claimed_elsewhere
 
-        running = run.model_copy(
-            update={
-                "status": WorkflowStatus.RUNNING,
-                "checkpoint_ref": str(run.id),
-                "error_summary": None,
-                "completed_at": None,
-            }
-        )
-        running = await self._update_run(running)
+        current_narrative, prior_briefs = await self._load_context(cadence, start)
 
         state = {
             "run_id": str(run.id),
@@ -113,6 +145,12 @@ class WorkflowRunner:
             "batch_summaries": [
                 summary.model_dump(mode="python") for summary in batch_summaries or []
             ],
+            "prior_briefs": [brief.model_dump(mode="python") for brief in prior_briefs],
+            "current_narrative": (
+                current_narrative.model_dump(mode="python")
+                if current_narrative is not None
+                else None
+            ),
             "correlation_id": str(run.id),
         }
         config = {

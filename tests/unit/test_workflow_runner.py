@@ -16,9 +16,7 @@ from analyst_engine.domain.models import (
     WorkflowRun,
     WorkflowStatus,
 )
-from analyst_engine.models.gateway import RetryableModelError
-from analyst_engine.models.gateway import TerminalModelError
-from analyst_engine.models.gateway import ModelUsage
+from analyst_engine.models.gateway import ModelUsage, RetryableModelError, TerminalModelError
 from analyst_engine.workflows.runner import WorkflowRunner
 
 
@@ -103,7 +101,9 @@ async def test_cadences_invoke_selected_checkpointed_graph_with_stable_identity(
     other = Mock()
 
     monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=pending))
-    monkeypatch.setattr(runner, "_update_run", AsyncMock(side_effect=[running, succeeded]))
+    monkeypatch.setattr(runner, "_claim_run", AsyncMock(return_value=running))
+    monkeypatch.setattr(runner, "_load_context", AsyncMock(return_value=(None, [])))
+    monkeypatch.setattr(runner, "_update_run", AsyncMock(return_value=succeeded))
     monkeypatch.setattr(
         "analyst_engine.workflows.runner.GRAPH_BUILDERS",
         {Cadence.DAILY: other, Cadence.WEEKLY: other, Cadence.MONTHLY: other}
@@ -139,15 +139,14 @@ async def test_terminal_duplicate_returns_without_graph_invocation(
     builder.assert_not_called()
 
 
-@pytest.mark.parametrize("initial", [WorkflowStatus.PENDING, WorkflowStatus.RUNNING])
-async def test_nonterminal_run_starts_or_resumes_same_checkpoint(
-    monkeypatch: pytest.MonkeyPatch, initial: WorkflowStatus
+async def test_pending_run_starts_or_resumes_same_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runner = _runner()
     run = WorkflowRun(
         cadence=Cadence.DAILY,
         idempotency_key="daily:2026-07-12:2026-07-12",
-        status=initial,
+        status=WorkflowStatus.PENDING,
     )
     running = run.model_copy(
         update={"status": WorkflowStatus.RUNNING, "checkpoint_ref": str(run.id)}
@@ -155,7 +154,9 @@ async def test_nonterminal_run_starts_or_resumes_same_checkpoint(
     succeeded = running.model_copy(update={"status": WorkflowStatus.SUCCEEDED})
     compiled = _CompiledGraph()
     monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
-    update = AsyncMock(side_effect=[running, succeeded])
+    monkeypatch.setattr(runner, "_claim_run", AsyncMock(return_value=running))
+    monkeypatch.setattr(runner, "_load_context", AsyncMock(return_value=(None, [])))
+    update = AsyncMock(return_value=succeeded)
     monkeypatch.setattr(runner, "_update_run", update)
     monkeypatch.setattr(
         "analyst_engine.workflows.runner.GRAPH_BUILDERS",
@@ -165,7 +166,24 @@ async def test_nonterminal_run_starts_or_resumes_same_checkpoint(
     await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
 
     assert compiled.calls[0][1]["configurable"]["thread_id"] == str(run.id)
-    assert update.await_args_list[0].args[0].status is WorkflowStatus.RUNNING
+    assert update.await_args_list[0].args[0].status is WorkflowStatus.SUCCEEDED
+
+
+async def test_running_duplicate_returns_without_invoking_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _runner()
+    running = WorkflowRun(
+        cadence=Cadence.DAILY,
+        idempotency_key="daily:2026-07-12:2026-07-12",
+        status=WorkflowStatus.RUNNING,
+    )
+    builder = Mock()
+    monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=running))
+    monkeypatch.setattr("analyst_engine.workflows.runner.GRAPH_BUILDERS", {Cadence.DAILY: builder})
+
+    assert await runner.run_daily(date(2026, 7, 12)) == running
+    builder.assert_not_called()
 
 
 async def test_graph_failure_is_durably_failed_and_reraised(
@@ -179,7 +197,9 @@ async def test_graph_failure_is_durably_failed_and_reraised(
     failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
     error = RetryableModelError("secret provider payload", details={"token": "secret"})
     monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
-    update = AsyncMock(side_effect=[running, failed])
+    monkeypatch.setattr(runner, "_claim_run", AsyncMock(return_value=running))
+    monkeypatch.setattr(runner, "_load_context", AsyncMock(return_value=(None, [])))
+    update = AsyncMock(return_value=failed)
     monkeypatch.setattr(runner, "_update_run", update)
     monkeypatch.setattr(
         "analyst_engine.workflows.runner.GRAPH_BUILDERS",
@@ -189,7 +209,7 @@ async def test_graph_failure_is_durably_failed_and_reraised(
     with pytest.raises(RetryableModelError, match="secret provider payload"):
         await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
 
-    failure = update.await_args_list[-1].args[0]
+    failure = update.await_args_list[0].args[0]
     assert failure.status is WorkflowStatus.FAILED
     assert failure.completed_at is not None
     assert failure.error_summary == "RetryableModelError: provider operation failed"
@@ -211,16 +231,15 @@ async def test_checkpoint_context_failure_never_marks_run_succeeded(
     )
     failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
     monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
-    update = AsyncMock(side_effect=[running, failed])
+    monkeypatch.setattr(runner, "_claim_run", AsyncMock(return_value=running))
+    monkeypatch.setattr(runner, "_load_context", AsyncMock(return_value=(None, [])))
+    update = AsyncMock(return_value=failed)
     monkeypatch.setattr(runner, "_update_run", update)
 
     with pytest.raises(RuntimeError, match="database password"):
         await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
 
-    assert [call.args[0].status for call in update.await_args_list] == [
-        WorkflowStatus.RUNNING,
-        WorkflowStatus.FAILED,
-    ]
+    assert [call.args[0].status for call in update.await_args_list] == [WorkflowStatus.FAILED]
 
 
 @pytest.mark.parametrize(
@@ -235,7 +254,9 @@ async def test_terminal_or_malformed_provider_output_is_failed_and_reraised(
     running = run.model_copy(update={"status": WorkflowStatus.RUNNING})
     failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
     monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
-    update = AsyncMock(side_effect=[running, failed])
+    monkeypatch.setattr(runner, "_claim_run", AsyncMock(return_value=running))
+    monkeypatch.setattr(runner, "_load_context", AsyncMock(return_value=(None, [])))
+    update = AsyncMock(return_value=failed)
     monkeypatch.setattr(runner, "_update_run", update)
     monkeypatch.setattr(
         "analyst_engine.workflows.runner.GRAPH_BUILDERS",
@@ -246,7 +267,7 @@ async def test_terminal_or_malformed_provider_output_is_failed_and_reraised(
         await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
 
     statuses = [call.args[0].status for call in update.await_args_list]
-    assert statuses == [WorkflowStatus.RUNNING, WorkflowStatus.FAILED]
+    assert statuses == [WorkflowStatus.FAILED]
     summary = update.await_args_list[-1].args[0].error_summary
     assert summary is not None
     assert "secret" not in summary
@@ -261,7 +282,9 @@ async def test_success_lifecycle_update_failure_attempts_failed_and_reraises(
     failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
     compiled = _CompiledGraph()
     monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
-    update = AsyncMock(side_effect=[running, RuntimeError("database password"), failed])
+    monkeypatch.setattr(runner, "_claim_run", AsyncMock(return_value=running))
+    monkeypatch.setattr(runner, "_load_context", AsyncMock(return_value=(None, [])))
+    update = AsyncMock(side_effect=[RuntimeError("database password"), failed])
     monkeypatch.setattr(runner, "_update_run", update)
     monkeypatch.setattr(
         "analyst_engine.workflows.runner.GRAPH_BUILDERS",
@@ -273,7 +296,6 @@ async def test_success_lifecycle_update_failure_attempts_failed_and_reraises(
 
     assert len(compiled.calls) == 1
     assert [call.args[0].status for call in update.await_args_list] == [
-        WorkflowStatus.RUNNING,
         WorkflowStatus.SUCCEEDED,
         WorkflowStatus.FAILED,
     ]
@@ -314,12 +336,18 @@ async def test_analytical_commit_failure_rolls_back_and_marks_run_failed(
     running = run.model_copy(update={"status": WorkflowStatus.RUNNING})
     failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
     monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
-    update = AsyncMock(side_effect=[running, failed])
+    monkeypatch.setattr(runner, "_claim_run", AsyncMock(return_value=running))
+    monkeypatch.setattr(runner, "_load_context", AsyncMock(return_value=(None, [])))
+    update = AsyncMock(return_value=failed)
     monkeypatch.setattr(runner, "_update_run", update)
     save_narrative = AsyncMock()
+    save_expectation = AsyncMock()
     save_brief = AsyncMock()
     monkeypatch.setattr("analyst_engine.workflows.graphs.save_narrative_version", save_narrative)
     monkeypatch.setattr("analyst_engine.workflows.graphs.save_brief", save_brief)
+    monkeypatch.setattr(
+        "analyst_engine.workflows.graphs.save_prediction_expectation", save_expectation
+    )
 
     with pytest.raises(RuntimeError, match="database password"):
         await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
@@ -329,6 +357,5 @@ async def test_analytical_commit_failure_rolls_back_and_marks_run_failed(
     session.commit.assert_awaited_once()
     session.rollback.assert_awaited_once()
     assert [call.args[0].status for call in update.await_args_list] == [
-        WorkflowStatus.RUNNING,
         WorkflowStatus.FAILED,
     ]

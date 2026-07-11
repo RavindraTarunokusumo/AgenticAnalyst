@@ -9,7 +9,7 @@ from uuid import UUID
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from analyst_engine.domain.models import BatchSummary, Cadence, Citation
+from analyst_engine.domain.models import BatchSummary, Cadence, Citation, NarrativeStateVersion
 from analyst_engine.models.gateway import ModelGateway, ModelTask, ModelUsage
 from analyst_engine.workflows.graphs import (
     _frontier_synthesis,
@@ -24,6 +24,7 @@ class _Gateway(ModelGateway):
     def __init__(self, *, malformed: bool = False) -> None:
         self.malformed = malformed
         self.tasks: list[ModelTask] = []
+        self.messages: list[dict[str, str]] = []
 
     async def generate(
         self,
@@ -34,6 +35,7 @@ class _Gateway(ModelGateway):
         correlation_id: str,
     ) -> tuple[BaseModel, ModelUsage]:
         self.tasks.append(task)
+        self.messages = messages
         if self.malformed:
 
             class EmptyResult(BaseModel):
@@ -45,6 +47,14 @@ class _Gateway(ModelGateway):
                 brief_content=f"{task.value} brief",
                 narrative_state={"cadence": task.value},
                 change_log=["updated"],
+                expectations=[
+                    {
+                        "statement": "will happen",
+                        "confidence": 0.75,
+                        "confirmation": "confirmed",
+                        "falsification": "falsified",
+                    }
+                ],
             ),
             ModelUsage(model="fake"),
         )
@@ -62,7 +72,10 @@ def _input(cadence: Cadence) -> BriefGenerationInput:
         model="fake",
         prompt_version="v1",
         summary="summary",
-        citations=[Citation(article_id=article_id)],
+        source_notes="source note",
+        entities=["entity"],
+        topics=["topic"],
+        citations=[Citation(article_id=article_id, excerpt="quoted evidence")],
         created_at=datetime(2026, 7, 12, tzinfo=UTC),
     )
     return BriefGenerationInput(
@@ -98,6 +111,26 @@ async def test_frontier_outputs_keep_run_and_citation_lineage(
     assert output.brief.narrative_state_version_id == output.proposed_narrative_version.id
     assert output.brief.cited_batch_summary_ids == [inp.batch_summaries[0].id]
     assert output.brief.cited_article_ids == [inp.batch_summaries[0].citations[0].article_id]
+    prompt = gateway.messages[-1]["content"]
+    for expected in ("summary", "source note", "entity", "topic", "quoted evidence"):
+        assert expected in prompt
+
+
+async def test_frontier_chains_new_narrative_to_current_version() -> None:
+    inp = _input(Cadence.DAILY)
+    current = NarrativeStateVersion(
+        id=UUID("00000000-0000-0000-0000-000000000099"),
+        created_by_run_id=UUID("00000000-0000-0000-0000-000000000098"),
+        state={"existing": True},
+        change_log=["prior"],
+        created_at=datetime(2026, 7, 1, tzinfo=UTC),
+    )
+
+    output = await _frontier_synthesis(
+        _Gateway(), inp.model_copy(update={"current_narrative": current})
+    )
+
+    assert output.proposed_narrative_version.parent_id == current.id
 
 
 async def test_malformed_provider_output_does_not_create_domain_records() -> None:
@@ -124,9 +157,13 @@ async def test_each_cadence_graph_commits_brief_and_narrative(
 
     save_brief = AsyncMock()
     save_narrative = AsyncMock()
+    save_expectation = AsyncMock()
     monkeypatch.setattr("analyst_engine.workflows.graphs.session_scope", fake_scope)
     monkeypatch.setattr("analyst_engine.workflows.graphs.save_brief", save_brief)
     monkeypatch.setattr("analyst_engine.workflows.graphs.save_narrative_version", save_narrative)
+    monkeypatch.setattr(
+        "analyst_engine.workflows.graphs.save_prediction_expectation", save_expectation
+    )
     inp = _input(cadence)
     state = {
         "run_id": inp.correlation_id,
@@ -144,3 +181,7 @@ async def test_each_cadence_graph_commits_brief_and_narrative(
     assert save_narrative.await_args_list[0].args[0] is session
     assert save_brief.await_args_list[0].args[0] is session
     assert save_brief.await_args_list[0].args[1].cadence is cadence
+    assert save_expectation.await_args_list[0].args[0] is session
+    assert save_expectation.await_args_list[0].args[1].narrative_version_id == (
+        save_narrative.await_args_list[0].args[1].id
+    )
