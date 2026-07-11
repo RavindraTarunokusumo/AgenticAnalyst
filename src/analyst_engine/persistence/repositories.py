@@ -10,6 +10,7 @@ import uuid
 from datetime import date
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from analyst_engine.domain.models import (
@@ -148,6 +149,48 @@ def _workflow_to_orm(w: WorkflowRun) -> ORMWorkflowRun:
     )
 
 
+def _workflow_to_domain(row: ORMWorkflowRun) -> WorkflowRun:
+    return WorkflowRun(
+        id=row.id,
+        cadence=Cadence(row.cadence),
+        idempotency_key=row.idempotency_key,
+        status=WorkflowStatus(row.status),
+        checkpoint_ref=row.checkpoint_ref,
+        error_summary=row.error_summary,
+        started_at=row.started_at,
+        completed_at=row.completed_at,
+    )
+
+
+class WorkflowRunPersistenceError(RuntimeError):
+    """Base error for deterministic workflow-run persistence failures."""
+
+
+class WorkflowRunAlreadyExistsError(WorkflowRunPersistenceError):
+    """Raised when create conflicts with an existing stable identity."""
+
+
+class WorkflowRunNotFoundError(WorkflowRunPersistenceError):
+    """Raised when an update targets no workflow run."""
+
+
+class WorkflowRunIdentityError(WorkflowRunPersistenceError):
+    """Raised when an update attempts to change immutable identity fields."""
+
+
+class InvalidWorkflowRunTransitionError(WorkflowRunPersistenceError):
+    """Raised when a workflow-run lifecycle transition is not allowed."""
+
+
+_WORKFLOW_TRANSITIONS: dict[WorkflowStatus, frozenset[WorkflowStatus]] = {
+    WorkflowStatus.PENDING: frozenset({WorkflowStatus.RUNNING, WorkflowStatus.FAILED}),
+    WorkflowStatus.RUNNING: frozenset({WorkflowStatus.SUCCEEDED, WorkflowStatus.FAILED}),
+    WorkflowStatus.SUCCEEDED: frozenset(),
+    WorkflowStatus.FAILED: frozenset(),
+    WorkflowStatus.RESUMABLE: frozenset(),
+}
+
+
 # --- Repositories / operations ---
 
 
@@ -213,11 +256,51 @@ async def save_embedding(session: AsyncSession, emb: Embedding) -> Embedding:
     return emb
 
 
-async def save_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun:
+async def create_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun:
     orm = _workflow_to_orm(run)
     session.add(orm)
+    try:
+        await session.flush()
+    except IntegrityError as error:
+        raise WorkflowRunAlreadyExistsError(
+            f"workflow run already exists: id={run.id}, idempotency_key={run.idempotency_key!r}"
+        ) from error
+    await session.refresh(orm)
+    return _workflow_to_domain(orm)
+
+
+async def update_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun:
+    row = (
+        await session.execute(select(ORMWorkflowRun).where(ORMWorkflowRun.id == run.id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise WorkflowRunNotFoundError(f"workflow run not found: id={run.id}")
+    if row.idempotency_key != run.idempotency_key or row.cadence != run.cadence.value:
+        raise WorkflowRunIdentityError(
+            "workflow run identity is immutable: "
+            f"id={run.id}, idempotency_key={run.idempotency_key!r}, cadence={run.cadence.value}"
+        )
+
+    current_status = WorkflowStatus(row.status)
+    if run.status != current_status and run.status not in _WORKFLOW_TRANSITIONS[current_status]:
+        raise InvalidWorkflowRunTransitionError(
+            f"invalid workflow run transition: {current_status.value} -> {run.status.value}"
+        )
+
+    row.status = run.status.value
+    row.checkpoint_ref = run.checkpoint_ref
+    row.error_summary = run.error_summary
+    row.started_at = run.started_at
+    row.completed_at = run.completed_at
     await session.flush()
-    return run
+    await session.refresh(row)
+    return _workflow_to_domain(row)
+
+
+async def save_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun:
+    """Create a workflow run without overwrite semantics."""
+
+    return await create_workflow_run(session, run)
 
 
 async def get_workflow_run_by_idempotency(
@@ -230,16 +313,7 @@ async def get_workflow_run_by_idempotency(
     ).scalar_one_or_none()
     if row is None:
         return None
-    return WorkflowRun(
-        id=row.id,
-        cadence=Cadence(row.cadence),
-        idempotency_key=row.idempotency_key,
-        status=WorkflowStatus(row.status),
-        checkpoint_ref=row.checkpoint_ref,
-        error_summary=row.error_summary,
-        started_at=row.started_at,
-        completed_at=row.completed_at,
-    )
+    return _workflow_to_domain(row)
 
 
 async def get_brief_by_cadence_interval(

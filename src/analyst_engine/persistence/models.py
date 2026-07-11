@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Date, DateTime, Float, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
@@ -32,10 +32,6 @@ class Source(Base):
     normalized_domain: Mapped[str] = mapped_column(String(256), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
-    )
-
-    articles: Mapped[list[Article]] = relationship(
-        back_populates="source", cascade="all, delete-orphan"
     )
 
 
@@ -57,8 +53,6 @@ class Article(Base):
     language: Mapped[str | None] = mapped_column(String(16))
     raw_content_hash: Mapped[str | None] = mapped_column(String(128))
     cleaned_content: Mapped[str | None] = mapped_column(Text)
-
-    source: Mapped[Source] = relationship(back_populates="articles")
 
 
 class ArticleBatch(Base):

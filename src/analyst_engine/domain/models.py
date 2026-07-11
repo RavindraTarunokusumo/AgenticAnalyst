@@ -237,7 +237,7 @@ class WorkflowRun(BaseModel):
         default=None, description="LangGraph thread_id or checkpoint identifier"
     )
     error_summary: str | None = None
-    started_at: datetime = Field(default_factory=datetime.now(UTC))
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     completed_at: datetime | None = None
 
     @field_validator("idempotency_key")
