@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from analyst_engine.domain.models import (
     BatchSummary,
@@ -56,5 +56,4 @@ class CadenceWorkflowState(BaseModel):
     checkpoint_id: str | None = None
     correlation_id: str
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
