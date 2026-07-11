@@ -7,7 +7,7 @@ Pydantic models remain the public contracts; repositories translate.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -31,7 +31,7 @@ class Source(Base):
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     normalized_domain: Mapped[str] = mapped_column(String(256), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
     )
 
     articles: Mapped[list[Article]] = relationship(
@@ -52,7 +52,7 @@ class Article(Base):
         DateTime(timezone=True), nullable=False, index=True
     )
     ingested_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
     )
     language: Mapped[str | None] = mapped_column(String(16))
     raw_content_hash: Mapped[str | None] = mapped_column(String(128))
@@ -71,7 +71,7 @@ class ArticleBatch(Base):
     similarity_threshold: Mapped[float | None] = mapped_column(Float)
     grouping_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC), index=True
     )
 
 
@@ -88,7 +88,7 @@ class BatchSummary(Base):
     topics: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     citations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC), index=True
     )
 
 
@@ -103,7 +103,7 @@ class NarrativeStateVersion(Base):
     state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     change_log: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
     )
 
 
@@ -118,7 +118,7 @@ class PredictionExpectation(Base):
     falsification_criteria: Mapped[str] = mapped_column(Text, nullable=False)
     outcome_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
     )
 
 
@@ -139,7 +139,7 @@ class Brief(Base):
     narrative_state_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_by_run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC), index=True
     )
 
     __table_args__ = (
@@ -158,7 +158,7 @@ class Embedding(Base):
     vector: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
     meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
     )
 
 
@@ -172,6 +172,6 @@ class WorkflowRun(Base):
     checkpoint_ref: Mapped[str | None] = mapped_column(Text)
     error_summary: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC), index=True
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -6,7 +6,7 @@ LangGraph, or provider SDKs) are allowed here.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
@@ -62,7 +62,7 @@ class Source(BaseModel):
     normalized_domain: str = Field(
         description="Lower-cased registered domain used for dedup and grouping."
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(UTC))
 
 
 class Article(BaseModel):
@@ -77,7 +77,7 @@ class Article(BaseModel):
     title: str
     author: str | None = None
     published_at: datetime
-    ingested_at: datetime = Field(default_factory=datetime.utcnow)
+    ingested_at: datetime = Field(default_factory=datetime.now(UTC))
     language: str | None = None
     raw_content_hash: str | None = Field(
         default=None, description="Hash of original fetched payload for audit."
@@ -105,7 +105,7 @@ class ArticleBatch(BaseModel):
     embedding_model: str
     similarity_threshold: float | None = None
     grouping_run_id: UUID | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(UTC))
 
     @field_validator("article_ids")
     @classmethod
@@ -130,7 +130,7 @@ class BatchSummary(BaseModel):
     entities: list[str] = Field(default_factory=list)
     topics: list[str] = Field(default_factory=list)
     citations: list[Citation]
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(UTC))
 
     @model_validator(mode="after")
     def _has_citations(self) -> BatchSummary:
@@ -155,7 +155,7 @@ class NarrativeStateVersion(BaseModel):
         default_factory=list,
         description="Human-readable deltas applied in this version.",
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(UTC))
 
 
 class PredictionExpectation(BaseModel):
@@ -173,7 +173,7 @@ class PredictionExpectation(BaseModel):
         default="pending",
         description="pending | confirmed | falsified | superseded",
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(UTC))
 
 
 class Brief(BaseModel):
@@ -190,7 +190,7 @@ class Brief(BaseModel):
     cited_article_ids: list[UUID]
     narrative_state_version_id: UUID | None = None
     created_by_run_id: UUID
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(UTC))
 
     @model_validator(mode="after")
     def _has_citations(self) -> Brief:
@@ -212,7 +212,7 @@ class Embedding(BaseModel):
         default_factory=dict,
         description="Filterable columns (cadence, date bounds, source scope).",
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(UTC))
 
     @field_validator("vector")
     @classmethod
@@ -237,7 +237,7 @@ class WorkflowRun(BaseModel):
         default=None, description="LangGraph thread_id or checkpoint identifier"
     )
     error_summary: str | None = None
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=datetime.now(UTC))
     completed_at: datetime | None = None
 
     @field_validator("idempotency_key")
