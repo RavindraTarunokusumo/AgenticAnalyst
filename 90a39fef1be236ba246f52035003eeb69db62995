@@ -1,0 +1,5 @@
+Task: Runtime readiness and container health
+Summary: Added active-runtime database and Alembic readiness checks, structured redacted HTTP status, and Compose HTTP health probing.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 5
+Validation: 22 focused tests passed; scoped strict mypy passed; combined final gate timed out after 64.7s without output.
