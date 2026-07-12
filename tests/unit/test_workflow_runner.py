@@ -242,6 +242,33 @@ async def test_checkpoint_context_failure_never_marks_run_succeeded(
     assert [call.args[0].status for call in update.await_args_list] == [WorkflowStatus.FAILED]
 
 
+async def test_context_database_failure_marks_claimed_run_failed_and_reraises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _runner()
+    run = WorkflowRun(cadence=Cadence.DAILY, idempotency_key="daily:2026-07-12:2026-07-12")
+    running = run.model_copy(update={"status": WorkflowStatus.RUNNING})
+    failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
+    monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
+    monkeypatch.setattr(runner, "_claim_run", AsyncMock(return_value=running))
+    monkeypatch.setattr(
+        runner, "_load_context", AsyncMock(side_effect=RuntimeError("database password"))
+    )
+    update = AsyncMock(return_value=failed)
+    monkeypatch.setattr(runner, "_update_run", update)
+    builder = Mock()
+    monkeypatch.setattr("analyst_engine.workflows.runner.GRAPH_BUILDERS", {Cadence.DAILY: builder})
+
+    with pytest.raises(RuntimeError, match="database password"):
+        await runner.run_daily(date(2026, 7, 12))
+
+    builder.assert_not_called()
+    attempted = update.await_args_list[0].args[0]
+    assert attempted.status is WorkflowStatus.FAILED
+    assert attempted.error_summary == "RuntimeError: workflow execution failed"
+    assert "password" not in attempted.error_summary
+
+
 @pytest.mark.parametrize(
     "error",
     [TerminalModelError("secret terminal payload"), ValueError("malformed secret payload")],

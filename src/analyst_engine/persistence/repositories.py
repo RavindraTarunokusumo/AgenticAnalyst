@@ -348,11 +348,26 @@ async def claim_pending_workflow_run(session: AsyncSession, run: WorkflowRun) ->
     return None if claimed is None else _workflow_to_domain(claimed)
 
 
-async def get_latest_narrative_version(session: AsyncSession) -> NarrativeStateVersion | None:
-    row = (
+async def get_narrative_version_as_of(
+    session: AsyncSession, before: date
+) -> NarrativeStateVersion | None:
+    """Load the narrative attached to the latest brief strictly before a run."""
+
+    narrative_id = (
         await session.execute(
-            select(ORMNarrative).order_by(ORMNarrative.created_at.desc()).limit(1)
+            select(ORMBrief.narrative_state_version_id)
+            .where(
+                ORMBrief.covered_end < before,
+                ORMBrief.narrative_state_version_id.is_not(None),
+            )
+            .order_by(ORMBrief.covered_end.desc(), ORMBrief.created_at.desc())
+            .limit(1)
         )
+    ).scalar_one_or_none()
+    if narrative_id is None:
+        return None
+    row = (
+        await session.execute(select(ORMNarrative).where(ORMNarrative.id == narrative_id))
     ).scalar_one_or_none()
     if row is None:
         return None

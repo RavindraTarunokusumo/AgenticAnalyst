@@ -242,14 +242,14 @@ async def test_runner_claims_pending_checkpoint_once_and_running_duplicate_does_
     )
 
     first_task = asyncio.create_task(runner.run_daily(date(2026, 7, 12)))
-    await entered.wait()
-    duplicate = await runner.run_daily(date(2026, 7, 12))
+    await asyncio.wait_for(entered.wait(), timeout=10)
+    duplicate = await asyncio.wait_for(runner.run_daily(date(2026, 7, 12)), timeout=10)
     assert duplicate.status is WorkflowStatus.RUNNING
     assert duplicate.id == pending.id
     assert invocations == 1
 
     release.set()
-    completed = await first_task
+    completed = await asyncio.wait_for(first_task, timeout=10)
     assert completed.status is WorkflowStatus.SUCCEEDED
     assert invocations == 1
 

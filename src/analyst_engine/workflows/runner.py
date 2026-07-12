@@ -25,7 +25,7 @@ from analyst_engine.persistence.repositories import (
     WorkflowRunAlreadyExistsError,
     claim_pending_workflow_run,
     create_workflow_run,
-    get_latest_narrative_version,
+    get_narrative_version_as_of,
     get_workflow_run_by_idempotency,
     list_prior_briefs,
     update_workflow_run,
@@ -102,7 +102,7 @@ class WorkflowRunner:
         }[cadence]
         async with session_scope(self.session_factory) as session:
             return (
-                await get_latest_narrative_version(session),
+                await get_narrative_version_as_of(session, start),
                 await list_prior_briefs(session, prior_cadence, start),
             )
 
@@ -134,33 +134,31 @@ class WorkflowRunner:
                 raise RuntimeError("workflow run claim lost without a durable run")
             return claimed_elsewhere
 
-        current_narrative, prior_briefs = await self._load_context(cadence, start)
-
-        state = {
-            "run_id": str(run.id),
-            "cadence": cadence.value,
-            "covered_start": start.isoformat(),
-            "covered_end": end.isoformat(),
-            "idempotency_key": run.idempotency_key,
-            "batch_summaries": [
-                summary.model_dump(mode="python") for summary in batch_summaries or []
-            ],
-            "prior_briefs": [brief.model_dump(mode="python") for brief in prior_briefs],
-            "current_narrative": (
-                current_narrative.model_dump(mode="python")
-                if current_narrative is not None
-                else None
-            ),
-            "correlation_id": str(run.id),
-        }
-        config = {
-            "configurable": {
-                "thread_id": str(run.id),
-                "checkpoint_ns": cadence.value,
-            }
-        }
-
         try:
+            current_narrative, prior_briefs = await self._load_context(cadence, start)
+            state = {
+                "run_id": str(run.id),
+                "cadence": cadence.value,
+                "covered_start": start.isoformat(),
+                "covered_end": end.isoformat(),
+                "idempotency_key": run.idempotency_key,
+                "batch_summaries": [
+                    summary.model_dump(mode="python") for summary in batch_summaries or []
+                ],
+                "prior_briefs": [brief.model_dump(mode="python") for brief in prior_briefs],
+                "current_narrative": (
+                    current_narrative.model_dump(mode="python")
+                    if current_narrative is not None
+                    else None
+                ),
+                "correlation_id": str(run.id),
+            }
+            config = {
+                "configurable": {
+                    "thread_id": str(run.id),
+                    "checkpoint_ns": cadence.value,
+                }
+            }
             builder = GRAPH_BUILDERS[cadence](self.gateway, self.session_factory)
             async with self.checkpointer_factory() as checkpointer:
                 graph = builder.compile(checkpointer=checkpointer)

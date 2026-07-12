@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from datetime import UTC, date, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
+from uuid import uuid4
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -13,8 +16,36 @@ from analyst_engine.persistence.repositories import (
     WorkflowRunIdentityError,
     WorkflowRunNotFoundError,
     create_workflow_run,
+    get_narrative_version_as_of,
     update_workflow_run,
 )
+
+
+@pytest.mark.asyncio
+async def test_narrative_lookup_is_anchored_to_latest_brief_before_run_boundary() -> None:
+    narrative_id = uuid4()
+    row = SimpleNamespace(
+        id=narrative_id,
+        parent_id=None,
+        created_by_run_id=uuid4(),
+        state={"eligible": True},
+        change_log=["past brief"],
+        created_at=datetime(2026, 7, 20, tzinfo=UTC),
+    )
+    narrative_id_result = Mock()
+    narrative_id_result.scalar_one_or_none.return_value = narrative_id
+    narrative_result = Mock()
+    narrative_result.scalar_one_or_none.return_value = row
+    session = Mock()
+    session.execute = AsyncMock(side_effect=[narrative_id_result, narrative_result])
+
+    narrative = await get_narrative_version_as_of(session, date(2026, 7, 15))
+
+    assert narrative is not None
+    assert narrative.id == narrative_id
+    first_query = str(session.execute.await_args_list[0].args[0])
+    assert "brief.covered_end <" in first_query
+    assert "narrative_state_version.created_at" not in first_query
 
 
 def _orm_run(run: WorkflowRun) -> ORMWorkflowRun:
