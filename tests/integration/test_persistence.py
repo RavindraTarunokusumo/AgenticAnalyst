@@ -18,6 +18,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 from alembic.config import Config
+from fixtures import docker_endpoint_available  # type: ignore[import-not-found]
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -47,7 +48,6 @@ from analyst_engine.persistence.repositories import (
     save_workflow_run,
     upsert_source,
 )
-from fixtures import docker_endpoint_available
 
 try:
     from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
@@ -164,7 +164,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         res = await sess.execute(text("SELECT to_regclass('public.checkpoints') IS NOT NULL"))
         assert res.scalar() is True
 
-    # Build a minimal citation path: source -> 3 articles (domain requires 3-5) -> batch -> summary -> brief
+    # Build citation path: source -> 3 articles (domain min 3-5) -> batch -> summary -> brief
     now = datetime.now(UTC)
     source = Source(  # type: ignore[call-arg, unused-ignore]
         stable_id="test-src",

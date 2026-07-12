@@ -9,6 +9,7 @@ from typing import Any, Protocol
 
 import pytest
 import pytest_asyncio
+from fixtures import docker_endpoint_available  # type: ignore[import-not-found]
 from langgraph.graph import END, StateGraph
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -23,7 +24,6 @@ from analyst_engine.persistence.repositories import (
     update_workflow_run,
 )
 from analyst_engine.workflows.runner import WorkflowRunner
-from fixtures import docker_endpoint_available
 
 pytestmark = pytest.mark.integration
 
