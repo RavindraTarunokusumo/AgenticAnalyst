@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import AsyncIterator, Iterator
+from contextlib import suppress
 from datetime import date
 from functools import partial
 from typing import Any, Protocol
@@ -61,7 +62,12 @@ def workflow_postgres() -> Iterator[_PostgresContainer | None]:
         password="testpw",
         dbname="analyst_test",
     )
-    container.start()
+    try:
+        container.start()
+    except Exception:
+        with suppress(Exception):
+            container.stop()
+        raise
     try:
         yield container
     finally:

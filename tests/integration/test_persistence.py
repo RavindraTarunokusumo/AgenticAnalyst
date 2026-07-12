@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from datetime import UTC, date, datetime
 
 import pytest
@@ -75,7 +76,12 @@ def pg_container():  # type: ignore[no-untyped-def, unused-ignore]
         password="testpw",
         dbname="analyst_test",
     )
-    container.start()
+    try:
+        container.start()
+    except Exception:
+        with suppress(Exception):
+            container.stop()
+        raise
     try:
         yield container
     finally:

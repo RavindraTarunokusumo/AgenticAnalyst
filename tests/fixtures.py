@@ -3,8 +3,8 @@
 # mypy: ignore-errors
 from __future__ import annotations
 
-import os
 import uuid
+from contextlib import suppress
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -114,17 +114,16 @@ def docker_endpoint_available() -> bool:
     Returns True only on successful ping; False on any failure.
     No false positives from DOCKER_HOST presence or socket paths.
     """
+    client = None
     try:
         import docker  # type: ignore[import-untyped]
 
         client = docker.from_env(timeout=3)
         client.ping()
-        client.close()
         return True
     except Exception:
-        pass
-
-    # Path check (non-Windows only) never affects return value.
-    if os.name != "nt":
-        _ = os.path.exists("/var/run/docker.sock")
-    return False
+        return False
+    finally:
+        if client is not None:
+            with suppress(Exception):
+                client.close()
