@@ -10,7 +10,7 @@ import pytest
 
 from analyst_engine.config import Settings
 from analyst_engine.workflows.runner import WorkflowRunner
-from tests.fixtures import FakeModelGateway
+from fixtures import FakeModelGateway
 
 
 @dataclass
