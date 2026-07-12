@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fixtures import FakeModelGateway
 
 from analyst_engine.config import Settings
 from analyst_engine.workflows.runner import WorkflowRunner
-from tests.fixtures import FakeModelGateway
 
 
 @dataclass

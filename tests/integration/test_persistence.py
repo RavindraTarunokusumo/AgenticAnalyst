@@ -14,12 +14,16 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from datetime import UTC, date, datetime
 
 import pytest
+from alembic.config import Config
+from fixtures import docker_endpoint_available  # type: ignore[import-not-found]
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from alembic import command
 from analyst_engine.config import Settings
 from analyst_engine.domain.models import (
     Article,
@@ -43,6 +47,7 @@ from analyst_engine.persistence.repositories import (
     save_batch_summary,
     save_brief,
     save_workflow_run,
+    upsert_source,
 )
 
 try:
@@ -51,27 +56,32 @@ except ImportError:  # pragma: no cover
     PostgresContainer = None  # type: ignore[import-untyped, unused-ignore]
 
 
-# Integration tests require Docker + Linux container runtime.
-# They are skipped by default so the routine test suite stays green in
-# environments without Docker (see known limitation in session notes).
-pytestmark = pytest.mark.skip(
-    reason="Persistence integration tests require Docker (pgvector container). "
-    "Run with Docker available and SKIP_DOCKER_TESTS unset to execute."
-)
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(scope="session")
 def pg_container():  # type: ignore[no-untyped-def, unused-ignore]
+    if os.environ.get("DATABASE_URL"):
+        yield None
+        return
     if PostgresContainer is None:
-        pytest.skip("testcontainers not installed or Docker unavailable")
+        pytest.skip("integration database unavailable: no DATABASE_URL or testcontainers")
+    if not docker_endpoint_available():
+        pytest.skip("integration database unavailable: Docker endpoint not found")
+    # After availability check, do not swallow startup errors. Let image/pull/auth/
+    # config/Testcontainers/startup defects fail the gate (no broad skip here).
     container = PostgresContainer(
         image="pgvector/pgvector:0.8.0-pg16",
         username="analyst_test",
         password="testpw",
         dbname="analyst_test",
-        port=0,  # random free port
     )
-    container.start()
+    try:
+        container.start()
+    except Exception:
+        with suppress(Exception):
+            container.stop()
+        raise
     try:
         yield container
     finally:
@@ -80,9 +90,13 @@ def pg_container():  # type: ignore[no-untyped-def, unused-ignore]
 
 @pytest.fixture(scope="session")
 def test_database_url(pg_container) -> str:  # type: ignore[no-untyped-def, unused-ignore]
-    # testcontainers gives postgresql:// ; convert to asyncpg
-    base = pg_container.get_connection_url()
-    return base.replace("postgresql://", "postgresql+asyncpg://", 1)  # type: ignore[no-any-return]
+    base = os.environ.get("DATABASE_URL")
+    if base is None:
+        base = pg_container.get_connection_url(driver=None)
+    _, separator, connection = base.partition("://")
+    if not separator:
+        raise ValueError(f"invalid PostgreSQL connection URL: {base!r}")
+    return f"postgresql+asyncpg://{connection}"
 
 
 @pytest.fixture(scope="session")
@@ -114,12 +128,23 @@ async def _apply_migrations(database_url: str) -> None:
     old = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = database_url
     try:
-        from alembic.config import Config
-
-        from alembic import command
-
         cfg = Config("alembic.ini")
         # Ensure we target the right script location relative to cwd
+        command.upgrade(cfg, "head")
+    finally:
+        if old is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = old
+
+
+async def _verify_migration_roundtrip(database_url: str) -> None:
+    old = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = database_url
+    try:
+        cfg = Config("alembic.ini")
+        command.upgrade(cfg, "head")
+        command.downgrade(cfg, "base")
         command.upgrade(cfg, "head")
     finally:
         if old is None:
@@ -135,7 +160,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
     test_database_url: str,
 ) -> None:
     # Apply migrations (uses our initial migration + checkpoint tables)
-    await _apply_migrations(str(test_settings.database_url))
+    await _verify_migration_roundtrip(str(test_settings.database_url))
 
     # Verify tables exist via a raw query
     async with session_scope(session_factory) as sess:
@@ -144,14 +169,14 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         res = await sess.execute(text("SELECT to_regclass('public.checkpoints') IS NOT NULL"))
         assert res.scalar() is True
 
-    # Build a minimal citation path: source -> article -> batch -> summary -> brief
+    # Build citation path: source -> 3 articles (domain min 3-5) -> batch -> summary -> brief
     now = datetime.now(UTC)
     source = Source(  # type: ignore[call-arg, unused-ignore]
         stable_id="test-src",
         name="Test Source",
         normalized_domain="example.com",
     )
-    article = Article(
+    article1 = Article(
         source_id=source.id,
         url="https://example.com/a1",
         url_fingerprint="fp-a1",
@@ -159,8 +184,24 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         published_at=now,
         cleaned_content="Clean body one.",
     )
+    article2 = Article(
+        source_id=source.id,
+        url="https://example.com/a2",
+        url_fingerprint="fp-a2",
+        title="Article Two",
+        published_at=now,
+        cleaned_content="Clean body two.",
+    )
+    article3 = Article(
+        source_id=source.id,
+        url="https://example.com/a3",
+        url_fingerprint="fp-a3",
+        title="Article Three",
+        published_at=now,
+        cleaned_content="Clean body three.",
+    )
     batch = ArticleBatch(
-        article_ids=[article.id],
+        article_ids=[article1.id, article2.id, article3.id],
         grouping_method=GroupingMethod.TITLE_COSINE,
         embedding_model="test-emb",
     )
@@ -168,8 +209,12 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         batch_id=batch.id,
         model="qwen3.5-flash",
         prompt_version="v1",
-        summary="Cohesive summary of one article.",
-        citations=[Citation(article_id=article.id, excerpt="Clean body one.")],
+        summary="Cohesive summary of three articles.",
+        citations=[
+            Citation(article_id=article1.id, excerpt="Clean body one."),
+            Citation(article_id=article2.id, excerpt="Clean body two."),
+            Citation(article_id=article3.id, excerpt="Clean body three."),
+        ],
     )
     brief = Brief(
         cadence=Cadence.DAILY,
@@ -177,7 +222,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         covered_end=date.today(),
         content="Daily brief citing the batch.",
         cited_batch_summary_ids=[summary.id],
-        cited_article_ids=[article.id],
+        cited_article_ids=[article1.id, article2.id, article3.id],
         created_by_run_id=uuid.uuid4(),
     )
     run = WorkflowRun(
@@ -187,7 +232,10 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
     )
 
     async with session_scope(session_factory) as sess:
-        await save_article(sess, article)
+        await upsert_source(sess, source)
+        await save_article(sess, article1)
+        await save_article(sess, article2)
+        await save_article(sess, article3)
         await save_article_batch(sess, batch)
         await save_batch_summary(sess, summary)
         await save_brief(sess, brief)
@@ -208,6 +256,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         assert found_brief is not None
         assert found_brief.id == brief.id
         assert len(found_brief.cited_batch_summary_ids) == 1
+        assert len(found_brief.cited_article_ids) == 3
 
 
 @pytest.mark.asyncio

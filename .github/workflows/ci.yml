@@ -45,10 +45,10 @@ jobs:
       - name: Mypy
         run: uv run mypy src tests
 
-      - name: Tests (skip Docker integration + evaluation)
+      - name: Tests (PostgreSQL integration enabled; live evaluation excluded)
         env:
-          SKIP_DOCKER_TESTS: "1"
-        run: uv run pytest -m "not integration and not evaluation" --tb=short
+          DATABASE_URL: postgresql+asyncpg://analyst_engine:test@localhost:5432/analyst_engine
+        run: uv run pytest -m "not evaluation and not live_openrouter" --tb=short
 
       - name: Alembic check (against service postgres)
         env:

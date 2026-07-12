@@ -2,9 +2,9 @@
 
 ## Purpose
 
-PostgreSQL 16 + pgvector is the single system of record for the local harness. It stores LangGraph checkpoints, source and article records, deterministic article batches, batch summaries (Flash), briefs, versioned Narrative State, expectations, embeddings of briefs, and workflow run metadata.
+PostgreSQL 16 + pgvector is the single system of record for AnalystEngine. It stores LangGraph checkpoints, source and article records, deterministic article batches, batch summaries, briefs, versioned Narrative State, expectations, embeddings of briefs, and workflow run metadata for durable cadence execution.
 
-No claim_event, event fingerprinting, or contradiction graph exists in the initial harness (explicitly deferred).
+No claim_event, event fingerprinting, or contradiction graph exists (explicitly deferred).
 
 ## Storage Backend
 
@@ -70,14 +70,15 @@ Idempotent scheduled execution record.
 ## State Ownership
 
 - Repositories (in `persistence/repositories.py`) own all writes.
-- Workflows (later) own high-level orchestration and call repositories inside session_scope.
+- Workflows (via WorkflowRunner) own high-level orchestration and call repositories inside session_scope.
 - The LangGraph checkpointer owns its own tables' low-level writes.
 
 ## Persistence Invariants
 
 - Stable IDs (UUIDs + fingerprints) are authoritative.
 - Articles and their derived records are immutable after capture.
-- Idempotency keys prevent duplicate scheduled briefs.
+- Idempotency keys on workflow_run prevent duplicate scheduled executions (daily/weekly/monthly).
+- Workflow runs record lifecycle (pending → running → succeeded/failed) with stable ID used for checkpoint correlation.
 - Every Brief and Narrative proposal carries citation arrays that resolve through batch_summary → article_batch → article.
-- All writes go through an AsyncSession provided by engine.session_scope (caller controls transaction).
+- All writes go through an AsyncSession provided by engine.session_scope; the context manager commits on success, rolls back on error, and closes the session around the caller's operations.
 - Secrets and article bodies are never stored in LangSmith metadata (redaction is adapter concern).

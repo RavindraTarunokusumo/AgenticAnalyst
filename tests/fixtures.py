@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import suppress
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -104,3 +105,25 @@ def make_narrative() -> NarrativeStateVersion:
         state={"version": 1},
         change_log=["init"],
     )
+
+
+def docker_endpoint_available() -> bool:
+    """Return True if a Docker endpoint is reachable.
+
+    Contract: docker.from_env(timeout=3), ping(), close().
+    Returns True only on successful ping; False on any failure.
+    No false positives from DOCKER_HOST presence or socket paths.
+    """
+    client = None
+    try:
+        import docker  # type: ignore[import-untyped]
+
+        client = docker.from_env(timeout=3)
+        client.ping()
+        return True
+    except Exception:
+        return False
+    finally:
+        if client is not None:
+            with suppress(Exception):
+                client.close()

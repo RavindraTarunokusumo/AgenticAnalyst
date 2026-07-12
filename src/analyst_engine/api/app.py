@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import date
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi.responses import JSONResponse
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncEngine
 
+from analyst_engine.api.readiness import ReadinessStatus, check_readiness
 from analyst_engine.config import Settings
-from analyst_engine.persistence.engine import get_async_engine, get_session_factory
+from analyst_engine.runtime import RuntimeDependencies, create_runtime
 from analyst_engine.workflows.runner import WorkflowRunner
 
 # Very simple harness auth (token from env or header for local dev)
@@ -36,20 +39,29 @@ def get_settings() -> Settings:
     return Settings()  # relies on .env
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    settings = get_settings()
-    engine = get_async_engine(settings)
-    session_factory = get_session_factory(engine)
-    # Placeholder runner (in full would also init gateway + checkpointer)
-    runner = WorkflowRunner(settings, None, session_factory, None)  # type: ignore
-    app.state.engine = engine
-    app.state.runner = runner
-    yield
-    await engine.dispose()
+def create_app(
+    *,
+    settings_factory: Callable[[], Settings] = get_settings,
+    runtime_factory: Callable[[Settings], Awaitable[RuntimeDependencies]] = create_runtime,
+    readiness_checker: Callable[[AsyncEngine], Awaitable[ReadinessStatus]] = check_readiness,
+) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        runtime = await runtime_factory(settings_factory())
+        try:
+            runner = WorkflowRunner(
+                runtime.settings,
+                runtime.gateway,
+                runtime.session_factory,
+                runtime.checkpointer_factory,
+            )
+            app.state.runtime = runtime
+            app.state.engine = runtime.engine
+            app.state.runner = runner
+            yield
+        finally:
+            await runtime.close()
 
-
-def create_app() -> FastAPI:
     app = FastAPI(title="AnalystEngine Harness", lifespan=lifespan)
 
     @app.get("/healthz")
@@ -57,9 +69,13 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/readyz")
-    async def readyz() -> dict[str, Any]:
-        # In real impl: check db connectivity + migrations applied
-        return {"status": "ready", "migrations": "applied"}
+    async def readyz() -> JSONResponse:
+        runtime: RuntimeDependencies = app.state.runtime
+        readiness = await readiness_checker(runtime.engine)
+        return JSONResponse(
+            status_code=200 if readiness.status == "ready" else 503,
+            content=readiness.model_dump(exclude_none=True),
+        )
 
     async def _require_key(key: str | None = Security(API_KEY_HEADER)) -> str:
         # For harness: accept any non-empty or allow open in local

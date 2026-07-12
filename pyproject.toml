@@ -85,6 +85,11 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 addopts = "--cov=src/analyst_engine --cov-report=term-missing"
+markers = [
+    "integration: tests requiring a live PostgreSQL database",
+    "evaluation: opt-in temporal holdout evaluation",
+    "live_openrouter: opt-in smoke test that contacts OpenRouter only when explicitly enabled",
+]
 
 [tool.coverage.run]
 source = ["src/analyst_engine"]

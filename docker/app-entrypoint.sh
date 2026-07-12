@@ -12,7 +12,6 @@ case "$MODE" in
     ;;
 esac
 
-touch /tmp/analyst-engine-ready
 echo "AnalystEngine starting in ${MODE} mode."
 
 if [ "$MODE" = "api" ]; then
@@ -20,4 +19,3 @@ if [ "$MODE" = "api" ]; then
 else
     exec python -m analyst_engine.main
 fi
-

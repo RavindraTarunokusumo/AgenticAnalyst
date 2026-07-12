@@ -9,7 +9,8 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from analyst_engine.domain.models import (
@@ -21,6 +22,7 @@ from analyst_engine.domain.models import (
     Citation,
     Embedding,
     NarrativeStateVersion,
+    PredictionExpectation,
     Source,
     WorkflowRun,
     WorkflowStatus,
@@ -42,6 +44,9 @@ from analyst_engine.persistence.models import (
 )
 from analyst_engine.persistence.models import (
     NarrativeStateVersion as ORMNarrative,
+)
+from analyst_engine.persistence.models import (
+    PredictionExpectation as ORMExpectation,
 )
 from analyst_engine.persistence.models import (
     Source as ORMSource,
@@ -93,7 +98,7 @@ def _summary_to_orm(s: BatchSummary) -> ORMBatchSummary:
         source_notes=s.source_notes,
         entities=s.entities,
         topics=s.topics,
-        citations=[c.model_dump() for c in s.citations],
+        citations=[c.model_dump(mode="json") for c in s.citations],
         created_at=s.created_at,
     )
 
@@ -124,6 +129,19 @@ def _narrative_to_orm(n: NarrativeStateVersion) -> ORMNarrative:
     )
 
 
+def _expectation_to_orm(expectation: PredictionExpectation) -> ORMExpectation:
+    return ORMExpectation(
+        id=expectation.id,
+        narrative_version_id=expectation.narrative_version_id,
+        statement=expectation.statement,
+        confidence=expectation.confidence,
+        confirmation_criteria=expectation.confirmation_criteria,
+        falsification_criteria=expectation.falsification_criteria,
+        outcome_status=expectation.outcome_status,
+        created_at=expectation.created_at,
+    )
+
+
 def _embedding_to_orm(e: Embedding) -> ORMEmbedding:
     return ORMEmbedding(
         id=e.id,
@@ -146,6 +164,48 @@ def _workflow_to_orm(w: WorkflowRun) -> ORMWorkflowRun:
         started_at=w.started_at,
         completed_at=w.completed_at,
     )
+
+
+def _workflow_to_domain(row: ORMWorkflowRun) -> WorkflowRun:
+    return WorkflowRun(
+        id=row.id,
+        cadence=Cadence(row.cadence),
+        idempotency_key=row.idempotency_key,
+        status=WorkflowStatus(row.status),
+        checkpoint_ref=row.checkpoint_ref,
+        error_summary=row.error_summary,
+        started_at=row.started_at,
+        completed_at=row.completed_at,
+    )
+
+
+class WorkflowRunPersistenceError(RuntimeError):
+    """Base error for deterministic workflow-run persistence failures."""
+
+
+class WorkflowRunAlreadyExistsError(WorkflowRunPersistenceError):
+    """Raised when create conflicts with an existing stable identity."""
+
+
+class WorkflowRunNotFoundError(WorkflowRunPersistenceError):
+    """Raised when an update targets no workflow run."""
+
+
+class WorkflowRunIdentityError(WorkflowRunPersistenceError):
+    """Raised when an update attempts to change immutable identity fields."""
+
+
+class InvalidWorkflowRunTransitionError(WorkflowRunPersistenceError):
+    """Raised when a workflow-run lifecycle transition is not allowed."""
+
+
+_WORKFLOW_TRANSITIONS: dict[WorkflowStatus, frozenset[WorkflowStatus]] = {
+    WorkflowStatus.PENDING: frozenset({WorkflowStatus.RUNNING, WorkflowStatus.FAILED}),
+    WorkflowStatus.RUNNING: frozenset({WorkflowStatus.SUCCEEDED, WorkflowStatus.FAILED}),
+    WorkflowStatus.SUCCEEDED: frozenset(),
+    WorkflowStatus.FAILED: frozenset(),
+    WorkflowStatus.RESUMABLE: frozenset(),
+}
 
 
 # --- Repositories / operations ---
@@ -206,6 +266,14 @@ async def save_narrative_version(
     return version
 
 
+async def save_prediction_expectation(
+    session: AsyncSession, expectation: PredictionExpectation
+) -> PredictionExpectation:
+    session.add(_expectation_to_orm(expectation))
+    await session.flush()
+    return expectation
+
+
 async def save_embedding(session: AsyncSession, emb: Embedding) -> Embedding:
     orm = _embedding_to_orm(emb)
     session.add(orm)
@@ -213,11 +281,140 @@ async def save_embedding(session: AsyncSession, emb: Embedding) -> Embedding:
     return emb
 
 
-async def save_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun:
+async def create_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun:
     orm = _workflow_to_orm(run)
     session.add(orm)
+    try:
+        await session.flush()
+    except IntegrityError as error:
+        raise WorkflowRunAlreadyExistsError(
+            f"workflow run already exists: id={run.id}, idempotency_key={run.idempotency_key!r}"
+        ) from error
+    await session.refresh(orm)
+    return _workflow_to_domain(orm)
+
+
+async def update_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun:
+    row = (
+        await session.execute(
+            select(ORMWorkflowRun).where(ORMWorkflowRun.id == run.id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise WorkflowRunNotFoundError(f"workflow run not found: id={run.id}")
+    if row.idempotency_key != run.idempotency_key or row.cadence != run.cadence.value:
+        raise WorkflowRunIdentityError(
+            "workflow run identity is immutable: "
+            f"id={run.id}, idempotency_key={run.idempotency_key!r}, cadence={run.cadence.value}"
+        )
+
+    current_status = WorkflowStatus(row.status)
+    if run.status != current_status and run.status not in _WORKFLOW_TRANSITIONS[current_status]:
+        raise InvalidWorkflowRunTransitionError(
+            f"invalid workflow run transition: {current_status.value} -> {run.status.value}"
+        )
+
+    row.status = run.status.value
+    row.checkpoint_ref = run.checkpoint_ref
+    row.error_summary = run.error_summary
+    row.started_at = run.started_at
+    row.completed_at = run.completed_at
     await session.flush()
-    return run
+    await session.refresh(row)
+    return _workflow_to_domain(row)
+
+
+async def claim_pending_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun | None:
+    """Atomically claim a pending run; return None when another worker won."""
+
+    claimed = (
+        await session.execute(
+            update(ORMWorkflowRun)
+            .where(
+                ORMWorkflowRun.id == run.id,
+                ORMWorkflowRun.idempotency_key == run.idempotency_key,
+                ORMWorkflowRun.cadence == run.cadence.value,
+                ORMWorkflowRun.status == WorkflowStatus.PENDING.value,
+            )
+            .values(
+                status=WorkflowStatus.RUNNING.value,
+                checkpoint_ref=run.checkpoint_ref,
+                error_summary=None,
+                completed_at=None,
+            )
+            .returning(ORMWorkflowRun)
+        )
+    ).scalar_one_or_none()
+    return None if claimed is None else _workflow_to_domain(claimed)
+
+
+async def get_narrative_version_as_of(
+    session: AsyncSession, before: date
+) -> NarrativeStateVersion | None:
+    """Load the narrative attached to the latest brief strictly before a run."""
+
+    narrative_id = (
+        await session.execute(
+            select(ORMBrief.narrative_state_version_id)
+            .where(
+                ORMBrief.covered_end < before,
+                ORMBrief.narrative_state_version_id.is_not(None),
+            )
+            .order_by(ORMBrief.covered_end.desc(), ORMBrief.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if narrative_id is None:
+        return None
+    row = (
+        await session.execute(select(ORMNarrative).where(ORMNarrative.id == narrative_id))
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    return NarrativeStateVersion(
+        id=row.id,
+        parent_id=row.parent_id,
+        created_by_run_id=row.created_by_run_id,
+        state=dict(row.state),
+        change_log=list(row.change_log),
+        created_at=row.created_at,
+    )
+
+
+async def list_prior_briefs(session: AsyncSession, cadence: Cadence, before: date) -> list[Brief]:
+    rows = (
+        (
+            await session.execute(
+                select(ORMBrief)
+                .where(ORMBrief.cadence == cadence.value, ORMBrief.covered_end < before)
+                .order_by(ORMBrief.covered_end.desc())
+                .limit(31)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        Brief(
+            id=row.id,
+            cadence=Cadence(row.cadence),
+            covered_start=row.covered_start,
+            covered_end=row.covered_end,
+            content=row.content,
+            cited_batch_summary_ids=list(row.cited_batch_summary_ids),
+            cited_article_ids=list(row.cited_article_ids),
+            narrative_state_version_id=row.narrative_state_version_id,
+            created_by_run_id=row.created_by_run_id,
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
+
+
+async def save_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun:
+    """Create a workflow run without overwrite semantics."""
+
+    return await create_workflow_run(session, run)
 
 
 async def get_workflow_run_by_idempotency(
@@ -230,16 +427,7 @@ async def get_workflow_run_by_idempotency(
     ).scalar_one_or_none()
     if row is None:
         return None
-    return WorkflowRun(
-        id=row.id,
-        cadence=Cadence(row.cadence),
-        idempotency_key=row.idempotency_key,
-        status=WorkflowStatus(row.status),
-        checkpoint_ref=row.checkpoint_ref,
-        error_summary=row.error_summary,
-        started_at=row.started_at,
-        completed_at=row.completed_at,
-    )
+    return _workflow_to_domain(row)
 
 
 async def get_brief_by_cadence_interval(
