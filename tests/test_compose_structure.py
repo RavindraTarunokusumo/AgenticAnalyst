@@ -43,13 +43,12 @@ def test_app_waits_for_healthy_dependencies_and_exposes_a_health_check() -> None
     }
     assert app["environment"]["APP_PROCESS_MODE"] == "${APP_PROCESS_MODE:-api}"
     assert app["ports"] == ["8000:8000"]
-    assert app["healthcheck"]["test"] == [
-        "CMD-SHELL",
-        (
-            'python -c "from urllib.request import urlopen; '
-            "urlopen('http://127.0.0.1:8000/readyz', timeout=3)\""
-        ),
-    ]
+    health_command = app["healthcheck"]["test"]
+    assert health_command[0] == "CMD-SHELL"
+    assert "APP_PROCESS_MODE" in health_command[1]
+    assert "kill -0 1" in health_command[1]
+    assert "python -m analyst_engine.api.readiness" in health_command[1]
+    assert "http://127.0.0.1:8000/readyz" in health_command[1]
 
 
 def test_stateful_services_have_health_checks_and_named_storage() -> None:

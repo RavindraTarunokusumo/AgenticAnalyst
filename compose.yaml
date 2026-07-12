@@ -25,7 +25,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "python -c \"from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/readyz', timeout=3)\"",
+          "if [ \"$$APP_PROCESS_MODE\" = scheduler ]; then kill -0 1 && python -m analyst_engine.api.readiness; else python -c \"from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/readyz', timeout=3)\"; fi",
         ]
       interval: 10s
       timeout: 3s
