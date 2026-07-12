@@ -1,0 +1,5 @@
+Task: Runtime and persistence verification
+Summary: Mark only Runtime and Persistence Repair item 6 complete with implementation commit references.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 6
+Validation: 96 passed, 7 capability or opt-in skipped; 103 tests collected; strict mypy clean
