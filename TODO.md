@@ -19,7 +19,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
   - [x] Task 7: portable Docker/async integration harness (`f7ab25d`)
   - [x] Task 7: rerun Docker migration/checkpoint/concurrency gates (gates passed) (`dc8f040`)
   - [x] PR review: isolate testcontainers URL normalization from DATABASE_URL (`2bd292e`)
-  - [ ] CI review: make Windows selector policy type-safe on Linux
+  - [x] CI review: make Windows selector policy type-safe on Linux (`06143db`)
 
 ## Session: Harness Design (2026-07-10)
 
