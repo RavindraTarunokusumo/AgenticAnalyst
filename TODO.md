@@ -14,7 +14,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 - [x] Execute cadence graphs with stable run/checkpoint identity and truthful failure handling. (`f3d585d`)
 - [x] Replace hard-coded readiness and file health markers with database/migration-aware HTTP readiness. (`90a39fe`, `0bb9204`)
 - [x] Enable and repair persistence, workflow, API, migration, and Compose verification for this milestone. (`86e41df`, `49ccabc`)
-- [ ] Reconcile operational documentation and complete the full project quality gates. (documentation: 739a764, 0268b42, facb92e; pending Docker-backed integration and migration gates)
+- [ ] Reconcile operational documentation and complete the full project quality gates. (documentation: 739a764, 0268b42, facb92e; Docker-backed integration and migration gates passed; pending final independent review)
   - [x] Task 7: valid persistence lineage fixture (`b0b00fa`)
   - [x] Task 7: portable Docker/async integration harness (`f7ab25d`)
   - [x] Task 7: rerun Docker migration/checkpoint/concurrency gates (gates passed) (`dc8f040`)
