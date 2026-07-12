@@ -1,0 +1,5 @@
+Task: Task 5 readiness specification fixes
+Summary: Added mode-aware scheduler container health via shared readiness CLI and classified Alembic configuration failures without falsely failing database connectivity.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 5
+Validation: Ruff passed; scoped strict mypy passed; 17 focused tests passed.
