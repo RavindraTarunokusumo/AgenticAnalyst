@@ -32,7 +32,7 @@ ingestion work can use the same image.
 
 ### Core / Infrastructure
 
-- `config.py`: typed Settings (pydantic-settings) including MODEL_PROVIDER (dashscope|openrouter), OpenRouter configuration, DATABASE_URL, APP_PROCESS_MODE, and LangSmith flags.
+- `config.py`: typed Settings (pydantic-settings) for direct application runtime configuration. MODEL_PROVIDER and OpenRouter settings (plus others like DATABASE_URL, APP_PROCESS_MODE, LangSmith flags) are read from process environment or .env; Compose currently forwards only a subset (APP_PROCESS_MODE, DASHSCOPE_*, DATABASE_URL, LANGSMITH_* etc.) and does not declare MODEL_PROVIDER or OPENROUTER_* .
 - `runtime.py`: constructs the shared `RuntimeDependencies` bundle (engine, async session factory, ModelGateway, checkpointer factory) from Settings; owns resource cleanup on close.
 - `persistence/engine.py`: async SQLAlchemy engine + session_scope helper.
 - `persistence/checkpoints.py`: LangGraph AsyncPostgresSaver integration.
@@ -69,7 +69,7 @@ ingestion work can use the same image.
 
 ### Integrations
 
-ModelGateway supports dashscope (default) or openrouter (selected by MODEL_PROVIDER). OpenRouter uses the OpenAI-compatible chat completions endpoint with configurable frontier and batch-summary model aliases (plus fallbacks). LangSmith tracing is opt-in. SearXNG provides search.
+ModelGateway supports dashscope (default) or openrouter (selected by MODEL_PROVIDER at application runtime). OpenRouter uses the OpenAI-compatible chat completions endpoint with configurable frontier and batch-summary model aliases (plus fallbacks). LangSmith tracing is opt-in. SearXNG provides search. Provider selection and keys are supplied directly to the process (Compose does not forward MODEL_PROVIDER/OPENROUTER_*).
 
 ## Data Flow
 
@@ -110,6 +110,8 @@ invocation completes.
 | SearXNG | Non-empty `SEARXNG_SECRET_KEY` and `SEARXNG_PUBLIC_BASE_URL` environment variables | Compose refuses configuration without the secret; app startup is then gated on health | Compose topology is structurally tested; no live search runs in routine tests. |
 
 ### Model providers
+
+Application runtime configuration (via environment variables or .env loaded by Settings; Compose does not currently forward MODEL_PROVIDER or OPENROUTER_* variables — only APP_PROCESS_MODE, DASHSCOPE_*, DATABASE_URL, LANGSMITH_*, and SEARXNG_BASE_URL are declared in compose.yaml environment for the app service).
 
 | Provider | Selection | Notes |
 | --- | --- | --- |
