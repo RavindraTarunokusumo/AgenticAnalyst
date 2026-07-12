@@ -61,7 +61,8 @@ def test_settings_rejects_missing_dashscope_api_key() -> None:
     assert "dashscope_api_key is required" in errors[0]["msg"]
 
 
-def test_settings_rejects_missing_database_url() -> None:
+def test_settings_rejects_missing_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     with pytest.raises(ValidationError) as exc_info:
         Settings(dashscope_api_key=_VALID_DASHSCOPE_KEY)
 
