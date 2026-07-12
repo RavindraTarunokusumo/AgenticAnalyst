@@ -9,12 +9,10 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 
-# Set policy at conftest import time (before pytest-asyncio instantiates
-# any event loops for fixtures or tests). This resolves LangGraph
-# psycopg async checkpointer failures on Windows when DOCKER_HOST
-# integration tests run.
-if sys.platform == "win32" or os.name == "nt":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+# Set policy at conftest import time (before pytest-asyncio). Portable.
+if sys.platform == "win32":
+    policy = getattr(asyncio, "WindowsSelectorEventLoopPolicy", None)
+    if policy is not None:
+        asyncio.set_event_loop_policy(policy())
