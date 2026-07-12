@@ -204,7 +204,7 @@ docker compose ps
 
 ## Environment Variables
 
-Required and optional settings are documented in `.env.example`. Application runtime configuration (MODEL_PROVIDER, provider keys, etc.) is read directly by the process via Settings (pydantic-settings from env or .env). Current compose.yaml forwards only APP_PROCESS_MODE, DASHSCOPE_*, DATABASE_URL, LANGSMITH_*, SEARXNG_BASE_URL (and requires POSTGRES_* / SEARXNG_SECRET_KEY for other services). MODEL_PROVIDER and OPENROUTER_* are not forwarded by Compose; supply them to the app container (e.g. via .env in context, compose override, or explicit environment) when using OpenRouter.
+Required and optional settings are documented in `.env.example`. Application runtime configuration (MODEL_PROVIDER, provider keys, etc.) is read directly by the process via Settings (pydantic-settings). For direct non-Compose execution, provide the variables in the runtime environment of the process. Current compose.yaml forwards only APP_PROCESS_MODE, DASHSCOPE_*, DATABASE_URL, LANGSMITH_*, SEARXNG_BASE_URL (and requires POSTGRES_* / SEARXNG_SECRET_KEY for other services). MODEL_PROVIDER and OPENROUTER_* are not forwarded by Compose; to use OpenRouter with Compose provide them via a user-supplied override that explicitly adds `environment:` or `env_file:` for the app service.
 
 At minimum, runtime startup requires a database URL and provider credentials (depending on MODEL_PROVIDER):
 
