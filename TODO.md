@@ -16,7 +16,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 - [x] Enable and repair persistence, workflow, API, migration, and Compose verification for this milestone. (`86e41df`, `49ccabc`)
 - [ ] Reconcile operational documentation and complete the full project quality gates. (documentation: 739a764, 0268b42, facb92e; pending Docker-backed integration and migration gates)
   - [x] Task 7: valid persistence lineage fixture (`b0b00fa`)
-  - [ ] Task 7: portable Docker/async integration harness
+  - [x] Task 7: portable Docker/async integration harness (`f7ab25d`)
   - [ ] Task 7: rerun Docker migration/checkpoint/concurrency gates
 
 ## Session: Harness Design (2026-07-10)
