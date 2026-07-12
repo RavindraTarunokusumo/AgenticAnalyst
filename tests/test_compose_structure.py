@@ -42,9 +42,13 @@ def test_app_waits_for_healthy_dependencies_and_exposes_a_health_check() -> None
         "searxng": {"condition": "service_healthy"},
     }
     assert app["environment"]["APP_PROCESS_MODE"] == "${APP_PROCESS_MODE:-api}"
+    assert app["ports"] == ["8000:8000"]
     assert app["healthcheck"]["test"] == [
         "CMD-SHELL",
-        "test -f /tmp/analyst-engine-ready",
+        (
+            'python -c "from urllib.request import urlopen; '
+            "urlopen('http://127.0.0.1:8000/readyz', timeout=3)\""
+        ),
     ]
 
 
@@ -93,6 +97,7 @@ def test_app_entrypoint_has_explicit_api_and_scheduler_modes() -> None:
 
     assert "api | scheduler" in entrypoint
     assert "python -m analyst_engine.main" in entrypoint
+    assert "/tmp/analyst-engine-ready" not in entrypoint
 
 
 def test_container_image_installs_playwright_chromium_for_future_ingestion() -> None:

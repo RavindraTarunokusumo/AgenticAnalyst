@@ -8,9 +8,12 @@ from datetime import date
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi.responses import JSONResponse
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncEngine
 
+from analyst_engine.api.readiness import ReadinessStatus, check_readiness
 from analyst_engine.config import Settings
 from analyst_engine.runtime import RuntimeDependencies, create_runtime
 from analyst_engine.workflows.runner import WorkflowRunner
@@ -40,6 +43,7 @@ def create_app(
     *,
     settings_factory: Callable[[], Settings] = get_settings,
     runtime_factory: Callable[[Settings], Awaitable[RuntimeDependencies]] = create_runtime,
+    readiness_checker: Callable[[AsyncEngine], Awaitable[ReadinessStatus]] = check_readiness,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -65,9 +69,13 @@ def create_app(
         return {"status": "ok"}
 
     @app.get("/readyz")
-    async def readyz() -> dict[str, Any]:
-        # In real impl: check db connectivity + migrations applied
-        return {"status": "ready", "migrations": "applied"}
+    async def readyz() -> JSONResponse:
+        runtime: RuntimeDependencies = app.state.runtime
+        readiness = await readiness_checker(runtime.engine)
+        return JSONResponse(
+            status_code=200 if readiness.status == "ready" else 503,
+            content=readiness.model_dump(exclude_none=True),
+        )
 
     async def _require_key(key: str | None = Security(API_KEY_HEADER)) -> str:
         # For harness: accept any non-empty or allow open in local

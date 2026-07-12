@@ -19,8 +19,14 @@ services:
         condition: service_healthy
       searxng:
         condition: service_healthy
+    ports:
+      - "8000:8000"
     healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/analyst-engine-ready"]
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/readyz', timeout=3)\"",
+        ]
       interval: 10s
       timeout: 3s
       retries: 5
