@@ -14,7 +14,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 - [x] Execute cadence graphs with stable run/checkpoint identity and truthful failure handling. (`f3d585d`)
 - [x] Replace hard-coded readiness and file health markers with database/migration-aware HTTP readiness. (`90a39fe`, `0bb9204`)
 - [x] Enable and repair persistence, workflow, API, migration, and Compose verification for this milestone. (`86e41df`, `49ccabc`)
-- [ ] Reconcile operational documentation and complete the full project quality gates. (pending controller full gates and Docker verification; do not claim completion; doc work in 739a764 + corrective 0268b42)
+- [ ] Reconcile operational documentation and complete the full project quality gates. (pending controller full gates and Docker verification; do not claim completion; doc work: 739a764 (initial), 0268b42 + facb92e (correctives for spec review), 218d7ab (reflection), 5d54bee (hash tracking update))
 
 ## Session: Harness Design (2026-07-10)
 
