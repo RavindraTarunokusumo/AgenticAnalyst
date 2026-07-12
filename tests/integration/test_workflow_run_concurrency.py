@@ -3,13 +3,17 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import AsyncIterator, Iterator
-from typing import Protocol
+from datetime import date
+from functools import partial
+from typing import Any, Protocol
 
 import pytest
+from langgraph.graph import END, StateGraph
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from analyst_engine.config import Settings
 from analyst_engine.domain.models import Cadence, WorkflowRun, WorkflowStatus
+from analyst_engine.persistence.checkpoints import get_async_checkpointer
 from analyst_engine.persistence.engine import get_async_engine, get_session_factory, session_scope
 from analyst_engine.persistence.repositories import (
     InvalidWorkflowRunTransitionError,
@@ -17,6 +21,7 @@ from analyst_engine.persistence.repositories import (
     get_workflow_run_by_idempotency,
     update_workflow_run,
 )
+from analyst_engine.workflows.runner import WorkflowRunner
 
 try:
     from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
@@ -186,3 +191,73 @@ async def test_concurrent_terminal_transition_cannot_overwrite_committed_winner(
     assert winner.idempotency_key == running.idempotency_key == durable.idempotency_key
     assert durable.status == WorkflowStatus.SUCCEEDED
     assert durable.error_summary is None
+
+
+@pytest.mark.asyncio
+async def test_runner_claims_pending_checkpoint_once_and_running_duplicate_does_not_invoke(
+    monkeypatch: pytest.MonkeyPatch,
+    workflow_postgres: _PostgresContainer,
+    workflow_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    database_url = _async_database_url(workflow_postgres)
+    settings = Settings(
+        dashscope_api_key="test-key-for-checkpointed-runner",
+        database_url=database_url,
+    )
+    pending = WorkflowRun(
+        cadence=Cadence.DAILY,
+        idempotency_key="daily:2026-07-12:2026-07-12",
+        checkpoint_ref="resume-thread",
+    )
+    async with session_scope(workflow_session_factory) as session:
+        pending = await create_workflow_run(session, pending)
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    invocations = 0
+
+    def build_graph(_gateway: object, _session_factory: object) -> StateGraph[Any]:
+        builder = StateGraph(dict[str, Any])  # type: ignore[type-var]
+
+        async def node(state: dict[str, Any]) -> dict[str, Any]:
+            nonlocal invocations
+            invocations += 1
+            entered.set()
+            await release.wait()
+            return state
+
+        builder.add_node("work", node)  # type: ignore[type-var]
+        builder.set_entry_point("work")
+        builder.add_edge("work", END)
+        return builder
+
+    monkeypatch.setattr(
+        "analyst_engine.workflows.runner.GRAPH_BUILDERS", {Cadence.DAILY: build_graph}
+    )
+    runner = WorkflowRunner(
+        settings,
+        object(),  # type: ignore[arg-type]
+        workflow_session_factory,
+        partial(get_async_checkpointer, settings),
+    )
+
+    first_task = asyncio.create_task(runner.run_daily(date(2026, 7, 12)))
+    await entered.wait()
+    duplicate = await runner.run_daily(date(2026, 7, 12))
+    assert duplicate.status is WorkflowStatus.RUNNING
+    assert duplicate.id == pending.id
+    assert invocations == 1
+
+    release.set()
+    completed = await first_task
+    assert completed.status is WorkflowStatus.SUCCEEDED
+    assert invocations == 1
+
+    config = {
+        "configurable": {
+            "thread_id": str(pending.id),
+            "checkpoint_ns": Cadence.DAILY.value,
+        }
+    }
+    async with get_async_checkpointer(settings) as checkpointer:
+        assert await checkpointer.aget(config) is not None  # type: ignore[arg-type]
