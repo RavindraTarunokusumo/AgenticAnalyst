@@ -1,0 +1,5 @@
+Task: Runtime and persistence verification
+Summary: Normalize the repaired non-package fixture import ordering.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 6
+Validation: uv run ruff check .
