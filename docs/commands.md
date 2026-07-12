@@ -127,11 +127,18 @@ uv run pre-commit run --all-files
 
 ## Development Server
 
-Start the local stack (PostgreSQL/pgvector + SearXNG + app):
+Migrations must be applied before app readiness.
+
+Fresh start (new volume):
 
 ```bash
-docker compose up --build --wait
+docker compose build app
+docker compose up -d --wait postgres searxng
+docker compose run --rm --no-deps --entrypoint uv app run alembic upgrade head
+docker compose up -d --wait app
 ```
+
+For an existing database, run `uv run alembic upgrade head` for direct local execution or the same Compose entrypoint-override migration command before starting/restarting app.
 
 The app now supports two modes from the same image:
 
@@ -139,14 +146,14 @@ The app now supports two modes from the same image:
 - Scheduler: APScheduler that registers daily/weekly/monthly jobs (idempotent).
 
 ```bash
-APP_PROCESS_MODE=scheduler docker compose up --build --wait
+APP_PROCESS_MODE=scheduler docker compose up -d --wait app
 ```
 
 On Windows PowerShell:
 
 ```powershell
 $env:APP_PROCESS_MODE = "scheduler"
-docker compose up --build --wait
+docker compose up -d --wait app
 Remove-Item Env:APP_PROCESS_MODE
 ```
 

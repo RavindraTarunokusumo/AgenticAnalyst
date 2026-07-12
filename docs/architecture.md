@@ -63,7 +63,7 @@ ingestion work can use the same image.
 - `api/app.py`: FastAPI application factory with lifespan that materializes runtime + runner into app.state. Exposes:
   - `GET /healthz`: process liveness.
   - `GET /readyz`: database connectivity + current vs expected Alembic revision (503 when not ready).
-  - `POST /workflows/trigger`: accepts cadence + covered interval; returns durable run (id, status, idempotency_key) using the runner.
+  - `POST /workflows/trigger`: request schema accepts cadence, covered_start, covered_end; current execution derives effective covered_end from cadence + covered_start and does not use the supplied covered_end; returns durable run (id, status, idempotency_key) using the runner.
   - `GET /briefs`: placeholder.
 - `api/readiness.py`: `check_readiness` implementation and a CLI entrypoint (`python -m analyst_engine.api.readiness`) used by scheduler container healthcheck.
 

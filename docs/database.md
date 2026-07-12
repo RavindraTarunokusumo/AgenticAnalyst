@@ -80,5 +80,5 @@ Idempotent scheduled execution record.
 - Idempotency keys on workflow_run prevent duplicate scheduled executions (daily/weekly/monthly).
 - Workflow runs record lifecycle (pending → running → succeeded/failed) with stable ID used for checkpoint correlation.
 - Every Brief and Narrative proposal carries citation arrays that resolve through batch_summary → article_batch → article.
-- All writes go through an AsyncSession provided by engine.session_scope (caller controls transaction).
+- All writes go through an AsyncSession provided by engine.session_scope; the context manager commits on success, rolls back on error, and closes the session around the caller's operations.
 - Secrets and article bodies are never stored in LangSmith metadata (redaction is adapter concern).
