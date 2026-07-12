@@ -121,6 +121,7 @@ def docker_endpoint_available() -> bool:
         return True
     try:
         import docker  # type: ignore[import-untyped]
+
         client = docker.from_env(timeout=3)
         client.ping()
         client.close()
