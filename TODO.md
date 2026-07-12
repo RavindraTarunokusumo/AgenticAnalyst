@@ -12,7 +12,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 - [x] Add OpenRouter configuration and provider routing with offline contract tests. (`1f88183`)
 - [x] Introduce shared runtime dependency wiring for API and scheduler modes. (`3600a6a`)
 - [x] Execute cadence graphs with stable run/checkpoint identity and truthful failure handling. (`f3d585d`)
-- [x] Replace hard-coded readiness and file health markers with database/migration-aware HTTP readiness. (`90a39fe`)
+- [x] Replace hard-coded readiness and file health markers with database/migration-aware HTTP readiness. (`90a39fe`, `0bb9204`)
 - [ ] Enable and repair persistence, workflow, API, migration, and Compose verification for this milestone.
 - [ ] Reconcile operational documentation and complete the full project quality gates.
 
