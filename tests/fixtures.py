@@ -108,17 +108,12 @@ def make_narrative() -> NarrativeStateVersion:
 
 
 def docker_endpoint_available() -> bool:
-    """Return whether a local Docker endpoint is reachable for Testcontainers.
+    """Return True if a Docker endpoint is reachable.
 
-    - Honors explicit DOCKER_HOST (e.g. npipe for Docker Desktop on Windows).
-    - Uses docker.from_env().ping() for robust detection of active Docker
-      Desktop contexts (os.path.exists on Windows named pipes is unreliable).
-    - Falls back to legacy path checks.
-    - Performs no remote network I/O; local Docker daemon only.
-    - Returns False on any failure so callers can skip honestly.
+    Contract: docker.from_env(timeout=3), ping(), close().
+    Returns True only on successful ping; False on any failure.
+    No false positives from DOCKER_HOST presence or socket paths.
     """
-    if os.environ.get("DOCKER_HOST"):
-        return True
     try:
         import docker  # type: ignore[import-untyped]
 
@@ -128,9 +123,8 @@ def docker_endpoint_available() -> bool:
         return True
     except Exception:
         pass
-    if os.name == "nt":
-        return any(
-            os.path.exists(path)
-            for path in (r"\\.\pipe\docker_engine", r"\\.\pipe\dockerDesktopLinuxEngine")
-        )
-    return os.path.exists("/var/run/docker.sock")
+
+    # Path check (non-Windows only) never affects return value.
+    if os.name != "nt":
+        _ = os.path.exists("/var/run/docker.sock")
+    return False

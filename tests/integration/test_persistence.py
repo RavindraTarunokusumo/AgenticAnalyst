@@ -67,16 +67,15 @@ def pg_container():  # type: ignore[no-untyped-def, unused-ignore]
         pytest.skip("integration database unavailable: no DATABASE_URL or testcontainers")
     if not docker_endpoint_available():
         pytest.skip("integration database unavailable: Docker endpoint not found")
-    try:
-        container = PostgresContainer(
-            image="pgvector/pgvector:0.8.0-pg16",
-            username="analyst_test",
-            password="testpw",
-            dbname="analyst_test",
-        )
-        container.start()
-    except Exception as error:
-        pytest.skip(f"integration database unavailable: {error}")
+    # After availability check, do not swallow startup errors. Let image/pull/auth/
+    # config/Testcontainers/startup defects fail the gate (no broad skip here).
+    container = PostgresContainer(
+        image="pgvector/pgvector:0.8.0-pg16",
+        username="analyst_test",
+        password="testpw",
+        dbname="analyst_test",
+    )
+    container.start()
     try:
         yield container
     finally:
