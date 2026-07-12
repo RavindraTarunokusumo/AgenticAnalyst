@@ -174,14 +174,14 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         res = await sess.execute(text("SELECT to_regclass('public.checkpoints') IS NOT NULL"))
         assert res.scalar() is True
 
-    # Build a minimal citation path: source -> article -> batch -> summary -> brief
+    # Build a minimal citation path: source -> 3 articles (domain requires 3-5) -> batch -> summary -> brief
     now = datetime.now(UTC)
     source = Source(  # type: ignore[call-arg, unused-ignore]
         stable_id="test-src",
         name="Test Source",
         normalized_domain="example.com",
     )
-    article = Article(
+    article1 = Article(
         source_id=source.id,
         url="https://example.com/a1",
         url_fingerprint="fp-a1",
@@ -189,8 +189,24 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         published_at=now,
         cleaned_content="Clean body one.",
     )
+    article2 = Article(
+        source_id=source.id,
+        url="https://example.com/a2",
+        url_fingerprint="fp-a2",
+        title="Article Two",
+        published_at=now,
+        cleaned_content="Clean body two.",
+    )
+    article3 = Article(
+        source_id=source.id,
+        url="https://example.com/a3",
+        url_fingerprint="fp-a3",
+        title="Article Three",
+        published_at=now,
+        cleaned_content="Clean body three.",
+    )
     batch = ArticleBatch(
-        article_ids=[article.id],
+        article_ids=[article1.id, article2.id, article3.id],
         grouping_method=GroupingMethod.TITLE_COSINE,
         embedding_model="test-emb",
     )
@@ -198,8 +214,12 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         batch_id=batch.id,
         model="qwen3.5-flash",
         prompt_version="v1",
-        summary="Cohesive summary of one article.",
-        citations=[Citation(article_id=article.id, excerpt="Clean body one.")],
+        summary="Cohesive summary of three articles.",
+        citations=[
+            Citation(article_id=article1.id, excerpt="Clean body one."),
+            Citation(article_id=article2.id, excerpt="Clean body two."),
+            Citation(article_id=article3.id, excerpt="Clean body three."),
+        ],
     )
     brief = Brief(
         cadence=Cadence.DAILY,
@@ -207,7 +227,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         covered_end=date.today(),
         content="Daily brief citing the batch.",
         cited_batch_summary_ids=[summary.id],
-        cited_article_ids=[article.id],
+        cited_article_ids=[article1.id, article2.id, article3.id],
         created_by_run_id=uuid.uuid4(),
     )
     run = WorkflowRun(
@@ -218,7 +238,9 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
 
     async with session_scope(session_factory) as sess:
         await upsert_source(sess, source)
-        await save_article(sess, article)
+        await save_article(sess, article1)
+        await save_article(sess, article2)
+        await save_article(sess, article3)
         await save_article_batch(sess, batch)
         await save_batch_summary(sess, summary)
         await save_brief(sess, brief)
@@ -239,6 +261,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         assert found_brief is not None
         assert found_brief.id == brief.id
         assert len(found_brief.cited_batch_summary_ids) == 1
+        assert len(found_brief.cited_article_ids) == 3
 
 
 @pytest.mark.asyncio

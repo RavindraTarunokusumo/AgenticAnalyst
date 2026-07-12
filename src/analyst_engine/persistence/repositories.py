@@ -98,7 +98,7 @@ def _summary_to_orm(s: BatchSummary) -> ORMBatchSummary:
         source_notes=s.source_notes,
         entities=s.entities,
         topics=s.topics,
-        citations=[c.model_dump() for c in s.citations],
+        citations=[c.model_dump(mode="json") for c in s.citations],
         created_at=s.created_at,
     )
 
