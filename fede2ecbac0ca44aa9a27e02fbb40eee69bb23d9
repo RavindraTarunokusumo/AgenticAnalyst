@@ -1,0 +1,5 @@
+Task: Record Task 5 corrective commit
+Summary: Added scheduler readiness fix SHA to the completed Task 5 TODO item.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 5
+Validation: git diff --check passed.
