@@ -20,7 +20,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
   - [x] Task 7: rerun Docker migration/checkpoint/concurrency gates (gates passed) (`dc8f040`)
   - [x] PR review: isolate testcontainers URL normalization from DATABASE_URL (`2bd292e`)
   - [x] CI review: make Windows selector policy type-safe on Linux (`06143db`)
-  - [ ] Task 7: CI review: isolate missing DATABASE_URL settings test from CI environment
+  - [x] Task 7: CI review: isolate missing DATABASE_URL settings test from CI environment (`2f64a32`)
 
 ## Session: Harness Design (2026-07-10)
 
