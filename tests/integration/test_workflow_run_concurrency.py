@@ -86,13 +86,32 @@ def _async_database_url(container: _ConnectionUrlProvider | None) -> str:
     return f"postgresql+asyncpg://{connection}"
 
 
-def test_async_database_url_normalizes_testcontainers_driver() -> None:
+def test_async_database_url_normalizes_testcontainers_driver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
     class FakeContainer:
         def get_connection_url(self, driver: str | None = None) -> str:
             return "postgresql+psycopg2://user:password@localhost:5432/database"
 
     assert _async_database_url(FakeContainer()) == (
         "postgresql+asyncpg://user:password@localhost:5432/database"
+    )
+
+
+def test_async_database_url_prefers_DATABASE_URL_env_over_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit coverage that DATABASE_URL env takes precedence (CI path)."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql://ci-user:ci-pass@ci-host:5432/ci-db")
+
+    class FakeContainer:
+        def get_connection_url(self, driver: str | None = None) -> str:
+            return "postgresql+psycopg2://user:password@localhost:5432/database"
+
+    assert _async_database_url(FakeContainer()) == (
+        "postgresql+asyncpg://ci-user:ci-pass@ci-host:5432/ci-db"
     )
 
 
