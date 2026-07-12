@@ -4,12 +4,12 @@ Use this file as the second layer after `AGENTS.md`. It points to deeper docs wi
 
 ## Core Docs
 
-- [agent-harness.md](agent-harness.md): agent-facing documentation structure and harness rules
-- [architecture.md](architecture.md): system design, module boundaries, entry points, request/data flow
-- [database.md](database.md): schema, persistence model, migration rules
+- [agent-harness.md](agent-harness.md): agent development process, layered docs, and workflow rules (meta harness for safe agentic changes)
+- [architecture.md](architecture.md): system design, module boundaries, entry points (api/scheduler), runtime wiring, request/data flow, readiness
+- [database.md](database.md): schema, persistence model (workflow_run lifecycle + checkpoints), migration rules
 - [patterns.md](patterns.md): durable coding and state-management rules
-- [testing.md](testing.md): test execution, fixtures, validation workflow
-- [commands.md](commands.md): common local commands
+- [testing.md](testing.md): test execution, fixtures, validation workflow (unit, integration with Docker, api, compose structure)
+- [commands.md](commands.md): common local commands, process modes, database, environment
 - [changelog.md](changelog.md): notable behavior and architecture changes
 - [insights.md](insights.md): session lessons and reusable workflow observations
 

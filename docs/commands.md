@@ -155,8 +155,12 @@ Crawl4AI ingestion can use the same image without a browser-install step.
 
 ## Database
 
-The Compose stack starts PostgreSQL 16 with pgvector. Database migrations are
-introduced in a later harness task.
+The Compose stack starts PostgreSQL 16 with pgvector. Migrations are managed by
+Alembic. The initial migration creates the core analytical tables, `workflow_run`,
+and the LangGraph checkpoint tables. Routine tests and Compose health use the
+current head revision. Migration tests cover upgrade and (where provided)
+downgrade paths. Use `alembic` commands (via the project's env) for local
+revision management.
 
 ## Logs
 
@@ -200,20 +204,26 @@ docker compose ps
 
 ## Environment Variables
 
-Required and optional settings are documented in `.env.example`. At minimum, runtime startup requires:
+Required and optional settings are documented in `.env.example`. At minimum, runtime startup requires a database URL and provider credentials (depending on MODEL_PROVIDER):
 
 ```
-DASHSCOPE_API_KEY=
-DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+MODEL_PROVIDER=dashscope   # or openrouter
+DASHSCOPE_API_KEY=...      # when using dashscope (default)
+DASHSCOPE_BASE_URL=...
+# or for OpenRouter:
+# OPENROUTER_API_KEY=...
+# OPENROUTER_FRONTIER_MODEL=...
+# OPENROUTER_BATCH_SUMMARY_MODEL=...
 POSTGRES_DB=analyst_engine
 POSTGRES_USER=analyst_engine
 POSTGRES_PASSWORD=<local-password>
 DATABASE_URL=postgresql+asyncpg://<user>:<password>@postgres:5432/analyst_engine
 SEARXNG_SECRET_KEY=<local-secret>
 SEARXNG_PUBLIC_BASE_URL=http://localhost:8080/
+APP_PROCESS_MODE=api       # or scheduler
 ```
 
-LangSmith, scheduler mode, and temporal evaluation settings are also named in `.env.example`. Never commit real secrets.
+LangSmith (opt-in), scheduler mode, OpenRouter model aliases, and temporal evaluation settings are documented in `.env.example`. The /readyz endpoint and container health checks require the database to be reachable with migrations at the expected head. Never commit real secrets.
 
 ## Git Notes
 

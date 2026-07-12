@@ -9,28 +9,27 @@ Testing includes both execution and planning. Run automated tests and use test-p
 - [uv](https://docs.astral.sh/uv/) installed
 - Dependencies installed: `uv sync`
 - Run commands from the repository root
-- Mock external services; do not contact DashScope, LangSmith, or live data sources in routine tests
+- Mock external services; do not contact DashScope, OpenRouter, LangSmith, or live data sources in routine tests
 - Avoid real credentials in tests; supply fixture values directly to `Settings` or via test-local environment overrides
 
 ## Test Layout
 
 ```
 tests/
-  test_config.py    # Settings validation (baseline)
-  test_compose_structure.py
+  test_config.py              # Settings validation (baseline)
+  test_compose_structure.py   # Static Compose contract and health check topology
 ```
 
-Additional layers are added as the harness grows:
+Core layers:
 
-- `tests/unit/` — domain and adapter unit tests
-- `tests/integration/` — persistence and migration tests (Testcontainers + pgvector; skipped without Docker)
-- `tests/workflow/` — LangGraph workflow tests
-- `tests/api/` — FastAPI delivery tests
-- `tests/evaluation/` — opt-in temporal holdout evaluation (outside routine CI)
+- `tests/unit/` — domain, adapter (OpenRouter routing, process modes), repository lifecycle, workflow runner, graph, and runtime tests. Use fakes and mocks.
+- `tests/integration/` — persistence (workflow run create/update/idempotency), migration round-trips, checkpoint behavior, and concurrency (require Docker/Testcontainers or CI Postgres service; capability-aware skipping).
+- `tests/api/` — FastAPI liveness, readiness (200/503 + component shape), and trigger contract tests.
+- `tests/evaluation/` — opt-in temporal holdout evaluation (outside routine CI).
 
 ## Core Fixtures
 
-Baseline tests construct `Settings` instances inline with deterministic fixture values. Shared fixtures and factories are introduced in later harness tasks.
+Baseline tests construct `Settings` instances inline with deterministic fixture values. Integration and workflow tests share common fixtures for engine, session, and runner construction when Docker is available.
 
 ## Running Tests
 
