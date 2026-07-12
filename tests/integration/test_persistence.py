@@ -47,6 +47,7 @@ from analyst_engine.persistence.repositories import (
     save_workflow_run,
     upsert_source,
 )
+from fixtures import docker_endpoint_available
 
 try:
     from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
@@ -57,17 +58,6 @@ except ImportError:  # pragma: no cover
 pytestmark = pytest.mark.integration
 
 
-def _local_docker_endpoint_exists() -> bool:
-    if os.environ.get("DOCKER_HOST"):
-        return True
-    if os.name == "nt":
-        return any(
-            os.path.exists(path)
-            for path in (r"\\.\pipe\docker_engine", r"\\.\pipe\dockerDesktopLinuxEngine")
-        )
-    return os.path.exists("/var/run/docker.sock")
-
-
 @pytest.fixture(scope="session")
 def pg_container():  # type: ignore[no-untyped-def, unused-ignore]
     if os.environ.get("DATABASE_URL"):
@@ -75,7 +65,7 @@ def pg_container():  # type: ignore[no-untyped-def, unused-ignore]
         return
     if PostgresContainer is None:
         pytest.skip("integration database unavailable: no DATABASE_URL or testcontainers")
-    if not _local_docker_endpoint_exists():
+    if not docker_endpoint_available():
         pytest.skip("integration database unavailable: Docker endpoint not found")
     try:
         container = PostgresContainer(

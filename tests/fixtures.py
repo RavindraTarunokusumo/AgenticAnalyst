@@ -3,6 +3,7 @@
 # mypy: ignore-errors
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import UTC, date, datetime
 from typing import Any
@@ -104,3 +105,31 @@ def make_narrative() -> NarrativeStateVersion:
         state={"version": 1},
         change_log=["init"],
     )
+
+
+def docker_endpoint_available() -> bool:
+    """Return whether a local Docker endpoint is reachable for Testcontainers.
+
+    - Honors explicit DOCKER_HOST (e.g. npipe for Docker Desktop on Windows).
+    - Uses docker.from_env().ping() for robust detection of active Docker
+      Desktop contexts (os.path.exists on Windows named pipes is unreliable).
+    - Falls back to legacy path checks.
+    - Performs no remote network I/O; local Docker daemon only.
+    - Returns False on any failure so callers can skip honestly.
+    """
+    if os.environ.get("DOCKER_HOST"):
+        return True
+    try:
+        import docker  # type: ignore[import-untyped]
+        client = docker.from_env(timeout=3)
+        client.ping()
+        client.close()
+        return True
+    except Exception:
+        pass
+    if os.name == "nt":
+        return any(
+            os.path.exists(path)
+            for path in (r"\\.\pipe\docker_engine", r"\\.\pipe\dockerDesktopLinuxEngine")
+        )
+    return os.path.exists("/var/run/docker.sock")

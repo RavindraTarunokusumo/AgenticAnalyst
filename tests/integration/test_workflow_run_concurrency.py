@@ -8,6 +8,7 @@ from functools import partial
 from typing import Any, Protocol
 
 import pytest
+import pytest_asyncio
 from langgraph.graph import END, StateGraph
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -22,19 +23,9 @@ from analyst_engine.persistence.repositories import (
     update_workflow_run,
 )
 from analyst_engine.workflows.runner import WorkflowRunner
+from fixtures import docker_endpoint_available
 
 pytestmark = pytest.mark.integration
-
-
-def _local_docker_endpoint_exists() -> bool:
-    if os.environ.get("DOCKER_HOST"):
-        return True
-    if os.name == "nt":
-        return any(
-            os.path.exists(path)
-            for path in (r"\\.\pipe\docker_engine", r"\\.\pipe\dockerDesktopLinuxEngine")
-        )
-    return os.path.exists("/var/run/docker.sock")
 
 
 try:
@@ -60,7 +51,7 @@ def workflow_postgres() -> Iterator[_PostgresContainer | None]:
         return
     if PostgresContainer is None:
         pytest.skip("testcontainers is not installed")
-    if not _local_docker_endpoint_exists():
+    if not docker_endpoint_available():
         pytest.skip("integration database unavailable: Docker endpoint not found")
     try:
         container = PostgresContainer(
@@ -116,7 +107,7 @@ def _apply_migrations(database_url: str) -> None:
             os.environ["DATABASE_URL"] = old
 
 
-@pytest.fixture(scope="module")
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def workflow_session_factory(
     workflow_postgres: _PostgresContainer | None,
 ) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
@@ -133,7 +124,7 @@ async def workflow_session_factory(
         await engine.dispose()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_illegal_update_preserves_durable_identity_and_status(
     workflow_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -157,7 +148,7 @@ async def test_illegal_update_preserves_durable_identity_and_status(
     assert durable.status == WorkflowStatus.PENDING
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_concurrent_terminal_transition_cannot_overwrite_committed_winner(
     workflow_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -216,7 +207,7 @@ async def test_concurrent_terminal_transition_cannot_overwrite_committed_winner(
     assert durable.error_summary is None
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_runner_claims_pending_checkpoint_once_and_running_duplicate_does_not_invoke(
     monkeypatch: pytest.MonkeyPatch,
     workflow_postgres: _PostgresContainer | None,
@@ -279,7 +270,7 @@ async def test_runner_claims_pending_checkpoint_once_and_running_duplicate_does_
     config = {
         "configurable": {
             "thread_id": str(pending.id),
-            "checkpoint_ns": Cadence.DAILY.value,
+            "checkpoint_ns": "",
         }
     }
     async with get_async_checkpointer(settings) as checkpointer:
