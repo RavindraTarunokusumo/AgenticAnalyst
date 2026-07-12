@@ -1,9 +1,11 @@
+from datetime import date
 from unittest.mock import AsyncMock, Mock
 
 from fastapi.testclient import TestClient
 
 from analyst_engine.api.app import create_app
 from analyst_engine.api.readiness import ComponentStatus, ReadinessStatus
+from analyst_engine.domain.models import Cadence, WorkflowRun, WorkflowStatus
 
 
 def _runtime() -> Mock:
@@ -89,3 +91,63 @@ def test_readyz_returns_503_and_redacts_dependency_failure() -> None:
     assert response.json()["status"] == "not_ready"
     assert secret not in body
     assert "super-secret" not in body
+
+
+def test_trigger_uses_injected_runtime_dependencies(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    runtime = _runtime()
+    run = WorkflowRun(
+        cadence=Cadence.DAILY,
+        idempotency_key="daily:2026-07-12:2026-07-12",
+        status=WorkflowStatus.SUCCEEDED,
+    )
+    runner = Mock()
+    runner.run_daily = AsyncMock(return_value=run)
+    monkeypatch.setattr("analyst_engine.api.app.WorkflowRunner", Mock(return_value=runner))
+    app = create_app(
+        settings_factory=Mock(),
+        runtime_factory=AsyncMock(return_value=runtime),
+        readiness_checker=AsyncMock(),
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/workflows/trigger",
+            json={
+                "cadence": "daily",
+                "covered_start": "2026-07-12",
+                "covered_end": "2026-07-12",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "run_id": str(run.id),
+        "status": "succeeded",
+        "idempotency_key": run.idempotency_key,
+    }
+    runner.run_daily.assert_awaited_once_with(date(2026, 7, 12))
+
+
+def test_trigger_rejects_unknown_cadence_before_runner_invocation(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    runtime = _runtime()
+    runner = Mock()
+    monkeypatch.setattr("analyst_engine.api.app.WorkflowRunner", Mock(return_value=runner))
+    app = create_app(
+        settings_factory=Mock(),
+        runtime_factory=AsyncMock(return_value=runtime),
+        readiness_checker=AsyncMock(),
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/workflows/trigger",
+            json={
+                "cadence": "quarterly",
+                "covered_start": "2026-07-12",
+                "covered_end": "2026-09-30",
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "unknown cadence"}
+    assert not runner.method_calls

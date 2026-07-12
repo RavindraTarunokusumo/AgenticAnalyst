@@ -23,6 +23,20 @@ from analyst_engine.persistence.repositories import (
 )
 from analyst_engine.workflows.runner import WorkflowRunner
 
+pytestmark = pytest.mark.integration
+
+
+def _local_docker_endpoint_exists() -> bool:
+    if os.environ.get("DOCKER_HOST"):
+        return True
+    if os.name == "nt":
+        return any(
+            os.path.exists(path)
+            for path in (r"\\.\pipe\docker_engine", r"\\.\pipe\dockerDesktopLinuxEngine")
+        )
+    return os.path.exists("/var/run/docker.sock")
+
+
 try:
     from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover
@@ -40,9 +54,14 @@ class _PostgresContainer(_ConnectionUrlProvider, Protocol):
 
 
 @pytest.fixture(scope="module")
-def workflow_postgres() -> Iterator[_PostgresContainer]:
+def workflow_postgres() -> Iterator[_PostgresContainer | None]:
+    if os.environ.get("DATABASE_URL"):
+        yield None
+        return
     if PostgresContainer is None:
         pytest.skip("testcontainers is not installed")
+    if not _local_docker_endpoint_exists():
+        pytest.skip("integration database unavailable: Docker endpoint not found")
     try:
         container = PostgresContainer(
             image="pgvector/pgvector:0.8.0-pg16",
@@ -59,8 +78,12 @@ def workflow_postgres() -> Iterator[_PostgresContainer]:
         container.stop()
 
 
-def _async_database_url(container: _ConnectionUrlProvider) -> str:
-    url = container.get_connection_url(driver=None)
+def _async_database_url(container: _ConnectionUrlProvider | None) -> str:
+    url = os.environ.get("DATABASE_URL")
+    if url is None:
+        if container is None:
+            raise ValueError("database URL and Testcontainers connection are unavailable")
+        url = container.get_connection_url(driver=None)
     _, separator, connection = url.partition("://")
     if not separator:
         raise ValueError(f"invalid PostgreSQL connection URL: {url!r}")
@@ -95,7 +118,7 @@ def _apply_migrations(database_url: str) -> None:
 
 @pytest.fixture(scope="module")
 async def workflow_session_factory(
-    workflow_postgres: _PostgresContainer,
+    workflow_postgres: _PostgresContainer | None,
 ) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     database_url = _async_database_url(workflow_postgres)
     _apply_migrations(database_url)
@@ -196,7 +219,7 @@ async def test_concurrent_terminal_transition_cannot_overwrite_committed_winner(
 @pytest.mark.asyncio
 async def test_runner_claims_pending_checkpoint_once_and_running_duplicate_does_not_invoke(
     monkeypatch: pytest.MonkeyPatch,
-    workflow_postgres: _PostgresContainer,
+    workflow_postgres: _PostgresContainer | None,
     workflow_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     database_url = _async_database_url(workflow_postgres)

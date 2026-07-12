@@ -17,9 +17,11 @@ from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
 
 import pytest
+from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from alembic import command
 from analyst_engine.config import Settings
 from analyst_engine.domain.models import (
     Article,
@@ -43,6 +45,7 @@ from analyst_engine.persistence.repositories import (
     save_batch_summary,
     save_brief,
     save_workflow_run,
+    upsert_source,
 )
 
 try:
@@ -51,27 +54,39 @@ except ImportError:  # pragma: no cover
     PostgresContainer = None  # type: ignore[import-untyped, unused-ignore]
 
 
-# Integration tests require Docker + Linux container runtime.
-# They are skipped by default so the routine test suite stays green in
-# environments without Docker (see known limitation in session notes).
-pytestmark = pytest.mark.skip(
-    reason="Persistence integration tests require Docker (pgvector container). "
-    "Run with Docker available and SKIP_DOCKER_TESTS unset to execute."
-)
+pytestmark = pytest.mark.integration
+
+
+def _local_docker_endpoint_exists() -> bool:
+    if os.environ.get("DOCKER_HOST"):
+        return True
+    if os.name == "nt":
+        return any(
+            os.path.exists(path)
+            for path in (r"\\.\pipe\docker_engine", r"\\.\pipe\dockerDesktopLinuxEngine")
+        )
+    return os.path.exists("/var/run/docker.sock")
 
 
 @pytest.fixture(scope="session")
 def pg_container():  # type: ignore[no-untyped-def, unused-ignore]
+    if os.environ.get("DATABASE_URL"):
+        yield None
+        return
     if PostgresContainer is None:
-        pytest.skip("testcontainers not installed or Docker unavailable")
-    container = PostgresContainer(
-        image="pgvector/pgvector:0.8.0-pg16",
-        username="analyst_test",
-        password="testpw",
-        dbname="analyst_test",
-        port=0,  # random free port
-    )
-    container.start()
+        pytest.skip("integration database unavailable: no DATABASE_URL or testcontainers")
+    if not _local_docker_endpoint_exists():
+        pytest.skip("integration database unavailable: Docker endpoint not found")
+    try:
+        container = PostgresContainer(
+            image="pgvector/pgvector:0.8.0-pg16",
+            username="analyst_test",
+            password="testpw",
+            dbname="analyst_test",
+        )
+        container.start()
+    except Exception as error:
+        pytest.skip(f"integration database unavailable: {error}")
     try:
         yield container
     finally:
@@ -80,9 +95,13 @@ def pg_container():  # type: ignore[no-untyped-def, unused-ignore]
 
 @pytest.fixture(scope="session")
 def test_database_url(pg_container) -> str:  # type: ignore[no-untyped-def, unused-ignore]
-    # testcontainers gives postgresql:// ; convert to asyncpg
-    base = pg_container.get_connection_url()
-    return base.replace("postgresql://", "postgresql+asyncpg://", 1)  # type: ignore[no-any-return]
+    base = os.environ.get("DATABASE_URL")
+    if base is None:
+        base = pg_container.get_connection_url(driver=None)
+    _, separator, connection = base.partition("://")
+    if not separator:
+        raise ValueError(f"invalid PostgreSQL connection URL: {base!r}")
+    return f"postgresql+asyncpg://{connection}"
 
 
 @pytest.fixture(scope="session")
@@ -114,12 +133,23 @@ async def _apply_migrations(database_url: str) -> None:
     old = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = database_url
     try:
-        from alembic.config import Config
-
-        from alembic import command
-
         cfg = Config("alembic.ini")
         # Ensure we target the right script location relative to cwd
+        command.upgrade(cfg, "head")
+    finally:
+        if old is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = old
+
+
+async def _verify_migration_roundtrip(database_url: str) -> None:
+    old = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = database_url
+    try:
+        cfg = Config("alembic.ini")
+        command.upgrade(cfg, "head")
+        command.downgrade(cfg, "base")
         command.upgrade(cfg, "head")
     finally:
         if old is None:
@@ -135,7 +165,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
     test_database_url: str,
 ) -> None:
     # Apply migrations (uses our initial migration + checkpoint tables)
-    await _apply_migrations(str(test_settings.database_url))
+    await _verify_migration_roundtrip(str(test_settings.database_url))
 
     # Verify tables exist via a raw query
     async with session_scope(session_factory) as sess:
@@ -187,6 +217,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
     )
 
     async with session_scope(session_factory) as sess:
+        await upsert_source(sess, source)
         await save_article(sess, article)
         await save_article_batch(sess, batch)
         await save_batch_summary(sess, summary)
