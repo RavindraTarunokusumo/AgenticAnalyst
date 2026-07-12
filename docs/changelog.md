@@ -9,7 +9,7 @@ Summary:
 - Why: Prior harness-era implementation used temporary markers, insert-only runs, incomplete wiring, and inaccurate readiness; this repair makes execution, persistence, and operational probes match the durable design so that success is only reported after real graph completion and readiness reflects live DB state.
 - User-visible impact: after Alembic reaches head, Compose starts FastAPI; a fresh volume requires the documented migration step. `docker compose up` now starts a real FastAPI on 8000 with /healthz (liveness) and /readyz (db/migrations); APP_PROCESS_MODE=scheduler runs registered cadence jobs; POST /workflows/trigger returns durable run records; readiness fails closed until migrations match head. OpenRouter selectable by supplying MODEL_PROVIDER and OPENROUTER_* directly to the application runtime environment (for direct non-Compose process execution) or via a user-supplied Compose override that explicitly adds `environment:` or `env_file:` (current compose.yaml does not forward these).
 - Migration notes: One initial migration (963e5ab691b1) creates all core tables + checkpoint tables. Use Alembic for future revisions; downgrades supported where provided.
-- Related PR/commit: Tasks 1-6 (c717d74, 1f88183, 3600a6a, f3d585d, 90a39fe+0bb9204, 86e41df+49ccabc); Task 7 documentation (739a764, 0268b42, facb92e). See accepted spec docs/superpowers/specs/2026-07-11-runtime-persistence-repair-design.md and plan.
+- Related PR/commit: Tasks 1-6 (c717d74, 1f88183, 3600a6a, f3d585d, 90a39fe+0bb9204, 86e41df+49ccabc); Task 7 documentation reconciliation is tracked in TODO.md. See accepted spec docs/superpowers/specs/2026-07-11-runtime-persistence-repair-design.md and plan.
 
 ## <YYYY-MM-DD> — <Change Title>
 
