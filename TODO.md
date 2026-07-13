@@ -12,7 +12,7 @@ Spec: `docs/superpowers/specs/2026-07-13-rss-daily-brief-design.md`
 Plan: `docs/superpowers/plans/2026-07-13-rss-daily-brief.md`
 
 - [x] Task 1: Domain models (`SourceFeed`, `IngestionAttempt`, enums; `batch_key` deferred to Task 2) + config settings (`542215a`)
-- [ ] Task 2: Persistence schema + Alembic migration (source_feed, ingestion_attempt, batch constraints)
+- [x] Task 2: Persistence schema + Alembic migration (source_feed, ingestion_attempt, batch constraints) (`315279d`)
 - [ ] Task 3: Repositories (feed/attempt/article/batch/summary lookups)
 - [ ] Task 4: `UrlCanonicalizer` + shared bounded-fetch/SSRF helper
 - [ ] Task 5: `FeedClient` + `FeedParser`
