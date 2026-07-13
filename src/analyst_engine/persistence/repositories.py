@@ -78,6 +78,7 @@ def _batch_to_orm(b: ArticleBatch) -> ORMArticleBatch:
     return ORMArticleBatch(
         id=b.id,
         article_ids=b.article_ids,
+        batch_key=b.batch_key,
         grouping_method=b.grouping_method.value
         if hasattr(b.grouping_method, "value")
         else str(b.grouping_method),

@@ -122,6 +122,10 @@ class ArticleBatch(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     article_ids: list[UUID] = Field(min_length=3, max_length=5)
+    batch_key: str = Field(
+        description="Stable key derived from ordered article fingerprints, "
+        "grouping method/version, and threshold."
+    )
     grouping_method: GroupingMethod
     embedding_model: str
     similarity_threshold: float | None = None
@@ -134,6 +138,13 @@ class ArticleBatch(BaseModel):
         if len(v) != len(set(v)):
             raise ValueError("article_ids must be unique within a batch")
         # caller ensures order; we accept the provided order
+        return v
+
+    @field_validator("batch_key")
+    @classmethod
+    def _nonempty_batch_key(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("batch_key must not be empty")
         return v
 
 

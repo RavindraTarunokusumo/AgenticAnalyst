@@ -70,8 +70,10 @@ def make_article(source_id: uuid.UUID, published: date) -> Article:
 
 
 def make_batch(articles: list[Article]) -> ArticleBatch:
+    article_ids = [a.id for a in articles]
     return ArticleBatch(
-        article_ids=[a.id for a in articles],
+        article_ids=article_ids,
+        batch_key="fake:" + ",".join(str(a) for a in article_ids),
         grouping_method=GroupingMethod.TITLE_TOKEN_JACCARD,
         embedding_model="fake",
     )
