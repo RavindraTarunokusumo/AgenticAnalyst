@@ -22,7 +22,8 @@ shell commands are regenerated per task, not transcribed here.
 ```
 src/analyst_engine/
   domain/models.py            [CHANGED] SourceFeed, IngestionAttempt, IngestionStatus,
-                               ExtractorKind, GroupingMethod rename, ArticleBatch.batch_key
+                               ExtractorKind, GroupingMethod rename (Task 1);
+                               ArticleBatch.batch_key (Task 2, with its ORM column)
   config.py                   [CHANGED] ingestion/pipeline settings
   persistence/models.py       [CHANGED] source_feed, ingestion_attempt ORM; batch_key +
                                batch_summary unique constraint; GIN index
@@ -75,8 +76,7 @@ before commit (per spec §12: "independent specification/code-quality review").
 - **Produces:**
   - `SourceFeed`, `IngestionAttempt` frozen Pydantic models (fields per spec §4.2–4.3).
   - `IngestionStatus` StrEnum (`pending, fetched, duplicate, succeeded, failed`), `ExtractorKind` StrEnum (`primary_http, crawl4ai`).
-  - `GroupingMethod` renamed member for the real method (e.g. `TITLE_TOKEN_JACCARD`); update the ~handful of existing test-fixture references in the same commit.
-  - `ArticleBatch.batch_key: str` field.
+  - `GroupingMethod` renamed member for the real method (`TITLE_TOKEN_JACCARD`); update the two existing test-fixture references in the same commit.
   - `Settings` fields: `feed_request_timeout_seconds`, `feed_response_size_limit_bytes`, `feed_user_agent`, `default_poll_interval_minutes`, `article_min_content_length`, `article_max_response_size_bytes`, `allowed_languages: list[str]`, `title_similarity_threshold: float`, `grouping_algorithm_version: str`, `batch_summary_prompt_version: str`, `max_feeds_per_run: int`, `max_articles_per_run: int`, `allow_unauthenticated_write: bool = False`.
 - **Consumed by:** every later task.
 - **Risk:** enum rename is a breaking signature change — grep all call sites before committing.
@@ -84,7 +84,7 @@ before commit (per spec §12: "independent specification/code-quality review").
 ### Task 2 — Persistence schema + migration
 
 - **Consumes:** Task 1 domain fields.
-- **Produces:** `source_feed`, `ingestion_attempt` ORM tables; `batch_key` column + unique constraint on `article_batch`; unique constraint on `batch_summary(batch_id, model, prompt_version)`; GIN index on `article_batch.article_ids` (needed by the "unbatched articles" exclusion query in Task 3); one new Alembic revision, `down_revision = "963e5ab691b1"`.
+- **Produces:** `source_feed`, `ingestion_attempt` ORM tables + domain↔ORM mappers; `ArticleBatch.batch_key: str` domain field **and** its `article_batch.batch_key` column + unique constraint, added together in this task (not Task 1) so every commit round-trips cleanly — Task 1 has no ORM column to back a required domain field; unique constraint on `batch_summary(batch_id, model, prompt_version)`; GIN index on `article_batch.article_ids` (needed by the "unbatched articles" exclusion query in Task 3); one new Alembic revision, `down_revision = "963e5ab691b1"`.
 - **Consumed by:** Task 3 repositories, Task 13 integration tests (upgrade/base/upgrade roundtrip, reusing the existing `_apply_migrations` integration-test pattern).
 - **Risk:** the GIN-index/array-exclusion query shape must be decided together with Task 3's `list_eligible_unbatched_articles` — write the query first, then the index that supports it, not the reverse.
 
