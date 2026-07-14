@@ -29,7 +29,7 @@ Plan: `docs/superpowers/plans/2026-07-13-rss-daily-brief.md`
   - [x] Fix: /briefs date-cutoff exclusion bug found + fixed during review (same commit as production code)
   - [x] Fix: TestClient lifespan never entered + accidental-pass auth test, found + fixed while verifying test coverage (test commit)
 - [x] Task 13: Integration/API test sweep + success-criteria verification (see commit body for the full spec §11 checklist)
-- [ ] Task 14: Documentation reconciliation
+- [x] Task 14: Documentation reconciliation (`613e256`; written directly, Grok delegation killed 3x with no output)
 
 ## Session: Harness Design (2026-07-10)
 
