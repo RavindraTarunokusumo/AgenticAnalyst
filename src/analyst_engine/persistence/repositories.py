@@ -733,6 +733,51 @@ async def get_source_by_stable_id(session: AsyncSession, stable_id: str) -> Sour
     return _source_to_domain(row)
 
 
+async def list_source_feeds_for_source(
+    session: AsyncSession, source_id: uuid.UUID
+) -> list[SourceFeed]:
+    rows = (
+        (
+            await session.execute(
+                select(ORMSourceFeed)
+                .where(ORMSourceFeed.source_id == source_id)
+                .order_by(ORMSourceFeed.feed_url.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_source_feed_to_domain(row) for row in rows]
+
+
+async def list_ingestion_attempts(
+    session: AsyncSession, *, status: IngestionStatus | None = None, limit: int = 50
+) -> list[IngestionAttempt]:
+    clamped_limit = max(1, min(limit, 200))
+    stmt = (
+        select(ORMIngestionAttempt)
+        .order_by(ORMIngestionAttempt.started_at.desc())
+        .limit(clamped_limit)
+    )
+    if status is not None:
+        stmt = stmt.where(ORMIngestionAttempt.status == status.value)
+    rows = (await session.execute(stmt)).scalars().all()
+    return [_ingestion_attempt_to_domain(row) for row in rows]
+
+
+async def get_batch_summaries_by_ids(
+    session: AsyncSession, summary_ids: list[uuid.UUID]
+) -> list[BatchSummary]:
+    if not summary_ids:
+        return []
+    rows = (
+        (await session.execute(select(ORMBatchSummary).where(ORMBatchSummary.id.in_(summary_ids))))
+        .scalars()
+        .all()
+    )
+    return [_summary_to_domain(row) for row in rows]
+
+
 async def record_ingestion_attempt(
     session: AsyncSession, attempt: IngestionAttempt
 ) -> IngestionAttempt:
