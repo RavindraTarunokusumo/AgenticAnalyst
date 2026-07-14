@@ -46,6 +46,39 @@ Record reusable lessons from completed sessions.
   - receiving-code-review subagent could auto-extract actionable items + suggest patches.
   - review skill could better handle "skeleton by design" cases and avoid flagging intentional placeholders.
 
+## 2026-07-14 — RSS-to-Daily-Brief Vertical Slice (codex/rss-daily-brief-plan, PR #3)
+
+- What worked:
+  - Grok CLI delegation (`grok -p ... -m grok-composer-2.5-fast --always-approve --output-format json`) handled most of the 14 implementation tasks; independent post-delegation verification (full ruff/mypy/pytest gate, not the implementer's scoped self-report) caught roughly 10 real bugs across the session (idempotency logic, test-harness bugs, an auth accidental-pass, a date-cutoff exclusion bug) that a "trust the implementer" workflow would have shipped. This is the single strongest validation yet of Workflow Rule 10.
+  - Distinguishing Grok's two distinct failure modes mattered: "killed but real (uncommitted, unverified) work was done" (Tasks 10, 12) vs. "killed with zero output and no session even registered" (Task 14, 3x) required checking `git status --porcelain` and `grok sessions list`, not just the wrapper's exit status, before deciding whether to salvage or fall back.
+  - Once Grok had failed 3x in a session (Task 14), extending that same distrust to review-type delegations (security review, code review) rather than re-attempting Grok for them was the right call — native Agent-tool subagents (the `security-review` builtin skill's pattern, and the `requesting-code-review` superpowers skill's template) worked cleanly as a same-session fallback with no further setup cost.
+  - `gh run watch <id> --exit-status` and `gh pr checks <n>` were effective for monitoring CI after a push without manual polling.
+  - Git notes on every commit (Task/Summary/Docs/TODO/Validation) again made post-hoc reconstruction possible without re-reading diffs, including across the mid-flight security-fix and CI-fix commits that weren't part of the original 14-task plan.
+
+- What failed / had to be worked around:
+  - A CI-only failure class was completely invisible locally: Docker is unavailable in this dev environment, so 19-21 Postgres-backed tests were silently skipped on every local gate run. "Full local suite green" was not sufficient evidence the PR was mergeable — the first push to PR #3 failed 5 tests in CI that had never executed locally at all. The workflow's "run the full gate before committing" rule needs an explicit caveat: when a local environment is missing a dependency CI has (Docker, here), the local gate cannot validate that dependency's code paths, and CI must be watched as a genuinely separate, non-redundant check, not a formality after "tests passed."
+  - Root-causing those 5 CI failures required reading actual GitHub Actions logs (`gh run view <id> --log-failed`) rather than guessing; the real cause (5 test modules sharing one physical CI Postgres database with zero cleanup between tests, so literal fixture values like `url_fingerprint="fp-a1"` collided across files) was a cross-task bug invisible to any single task's own scoped verification — each task's Grok delegation wrote its own copy-pasted `migrated`/`pg_container` fixture boilerplate with no shared cleanup, and nothing caught the aggregate effect until all 5 modules existed together in one CI run.
+  - The `advisor` tool was unavailable for the entire session ("do not try to use it again") — had to make several judgment calls (whether to fix vs. push back on a code-review finding, how to scope the CI-failure fix) without that second opinion. Worth checking advisor availability early in a session rather than assuming it.
+  - `--always-approve` for Grok delegation was blocked by a safety classifier on first use and needed an explicit `AskUserQuestion` confirmation before every subsequent delegation could proceed unattended — worth setting this expectation at session start next time Grok delegation is planned, rather than rediscovering the prompt mid-task.
+  - The main-branch worktree had pre-existing uncommitted changes (CLAUDE.md/AGENTS.md) unrelated to this session at Post-PR time; had to explicitly diff-check that the incoming merge range didn't touch those files before running `git merge --ff-only`, to avoid conflating this session's Post-PR commit with the user's own in-progress unrelated edits.
+
+- Useful commands:
+  - `gh pr checks <n>` / `gh run watch <id> --exit-status` / `gh run view <id> --log-failed` — CI status and failure-log retrieval without opening the browser.
+  - `git merge-base --is-ancestor <commit> <merge-commit>` — confirm a specific late-session commit (e.g. a post-review fix) actually made it into the merged PR before starting Post-PR archival.
+  - `git diff --stat <base>..<remote> -- <dirty-file>` — check whether an incoming fast-forward range touches files with pre-existing uncommitted local changes, before merging.
+  - `gh pr comment <n> --body "$(cat <<'EOF' ... EOF)"` — post structured review-reception summaries (security review, code review triage) directly to the PR as the audit trail, matching the reception-protocol requirement without a separate doc.
+
+- Scripts created: none (all direct tool edits and one `TRUNCATE`-based test fixture helper in `tests/fixtures.py`).
+
+- Workflow improvement:
+  - Add an explicit note to Workflow Rule 10 (or a new rule) that a local "full gate green" claim is only as strong as local environment parity with CI — when Docker (or any CI-only dependency) is unavailable locally, treat the first CI run after push as a required, non-redundant verification step, not a formality.
+  - When Grok delegation fails 3x in a session, treat that as a session-scoped signal to route ALL remaining delegation-eligible work (not just the task that failed) through the native-Agent-tooling fallback for the rest of that session, rather than re-attempting Grok per-task.
+  - Consider a shared root-level pytest fixture (or a `docs/testing.md`-documented convention, added this session) for Postgres-backed test modules, so future task delegations don't each reinvent their own `migrated`/`pg_container` boilerplate without cleanup — the current per-module copy-paste pattern is what caused the CI-only collision.
+
+- Skill worth adding or updating:
+  - The `requesting-code-review` superpowers skill's template is a solid same-session Grok fallback for the "main professional code review" Submit-PR step; consider referencing it directly in CLAUDE.md's Submit PR section as the named fallback path, rather than only the generic "spawn native subagents" clause.
+  - A lightweight "check advisor availability" step near session start (or graceful degradation messaging) would avoid silently losing that safety net for judgment-call decisions mid-session.
+
 ## 2026-07-12 — Runtime and Persistence Repair (codex/runtime-persistence-repair, PR #2)
 
 - What worked:
