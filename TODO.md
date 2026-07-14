@@ -16,7 +16,8 @@ Plan: `docs/superpowers/plans/2026-07-13-rss-daily-brief.md`
 - [x] Task 3: Repositories (feed/attempt/article/batch/summary lookups) (`374164d`)
 - [x] Task 4: `UrlCanonicalizer` + shared bounded-fetch/SSRF helper (`1ab237f`)
 - [x] Task 5: `FeedClient` + `FeedParser` (`165540e`)
-- [ ] Task 6: HTML cleaner + `ArticleExtractor` (primary + Crawl4AI fallback)
+- [x] Task 6: HTML cleaner + `ArticleExtractor` (primary + Crawl4AI fallback) (`24f5c4c`)
+  - [x] Extension: isolate crawl4ai's import-time `load_dotenv()` pollution from the test suite (env_ignore_empty, delenv fixes, root conftest.py) (`56a08d4`)
 - [ ] Task 7: `ArticleBatcher`
 - [ ] Task 8: `BatchSummarizer`
 - [ ] Task 9: `IngestionService`
