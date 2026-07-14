@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
 
-from sqlalchemy import any_, exists, literal_column, or_, select, update
+from sqlalchemy import any_, exists, literal, literal_column, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -840,3 +840,48 @@ async def get_brief_by_id(session: AsyncSession, brief_id: uuid.UUID) -> Brief |
     if row is None:
         return None
     return _brief_to_domain(row)
+
+
+async def get_articles_by_ids(session: AsyncSession, article_ids: list[uuid.UUID]) -> list[Article]:
+    if not article_ids:
+        return []
+    rows = (
+        (await session.execute(select(ORMArticle).where(ORMArticle.id.in_(article_ids))))
+        .scalars()
+        .all()
+    )
+    return [_article_to_domain(row) for row in rows]
+
+
+async def get_sources_by_ids(session: AsyncSession, source_ids: list[uuid.UUID]) -> list[Source]:
+    if not source_ids:
+        return []
+    rows = (
+        (await session.execute(select(ORMSource).where(ORMSource.id.in_(source_ids))))
+        .scalars()
+        .all()
+    )
+    return [_source_to_domain(row) for row in rows]
+
+
+async def is_batch_summary_cited(
+    session: AsyncSession,
+    batch_summary_id: uuid.UUID,
+    cadence: Cadence,
+    *,
+    exclude_covered_start: date | None = None,
+    exclude_covered_end: date | None = None,
+) -> bool:
+    conditions = [
+        ORMBrief.cadence == cadence.value,
+        literal(batch_summary_id) == any_(ORMBrief.cited_batch_summary_ids),
+    ]
+    if exclude_covered_start is not None and exclude_covered_end is not None:
+        conditions.append(
+            ~(
+                (ORMBrief.covered_start == exclude_covered_start)
+                & (ORMBrief.covered_end == exclude_covered_end)
+            )
+        )
+    row = (await session.execute(select(ORMBrief.id).where(*conditions))).scalar_one_or_none()
+    return row is not None
