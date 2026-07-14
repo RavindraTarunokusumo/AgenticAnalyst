@@ -39,8 +39,25 @@ class WorkflowStatus(StrEnum):
 class GroupingMethod(StrEnum):
     """How an article batch was formed."""
 
-    TITLE_COSINE = "title_cosine"
+    TITLE_TOKEN_JACCARD = "title_token_jaccard"
     CONTENT_COSINE = "content_cosine"
+
+
+class IngestionStatus(StrEnum):
+    """Lifecycle status of an ingestion attempt."""
+
+    PENDING = "pending"
+    FETCHED = "fetched"
+    DUPLICATE = "duplicate"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class ExtractorKind(StrEnum):
+    """Which extraction implementation produced an article."""
+
+    PRIMARY_HTTP = "primary_http"
+    CRAWL4AI = "crawl4ai"
 
 
 class Citation(BaseModel):
@@ -105,6 +122,10 @@ class ArticleBatch(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     article_ids: list[UUID] = Field(min_length=3, max_length=5)
+    batch_key: str = Field(
+        description="Stable key derived from ordered article fingerprints, "
+        "grouping method/version, and threshold."
+    )
     grouping_method: GroupingMethod
     embedding_model: str
     similarity_threshold: float | None = None
@@ -117,6 +138,13 @@ class ArticleBatch(BaseModel):
         if len(v) != len(set(v)):
             raise ValueError("article_ids must be unique within a batch")
         # caller ensures order; we accept the provided order
+        return v
+
+    @field_validator("batch_key")
+    @classmethod
+    def _nonempty_batch_key(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("batch_key must not be empty")
         return v
 
 
@@ -250,3 +278,53 @@ class WorkflowRun(BaseModel):
         if not v or not v.strip():
             raise ValueError("idempotency_key must not be empty")
         return v
+
+
+class SourceFeed(BaseModel):
+    """A polled RSS/Atom feed belonging to a registered source."""
+
+    model_config = {"frozen": True}
+
+    id: UUID = Field(default_factory=uuid4)
+    source_id: UUID
+    feed_url: str
+    feed_url_fingerprint: str = Field(
+        description="SHA-256 fingerprint of the canonical feed URL for deduplication."
+    )
+    enabled: bool = True
+    poll_interval_minutes: int = Field(gt=0)
+    etag: str | None = None
+    last_modified: str | None = None
+    last_polled_at: datetime | None = None
+    last_success_at: datetime | None = None
+    last_error_summary: str | None = None
+    created_at: datetime = Field(default_factory=_utc_now)
+    updated_at: datetime = Field(default_factory=_utc_now)
+
+    @field_validator("feed_url_fingerprint")
+    @classmethod
+    def _nonempty_fingerprint(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("feed_url_fingerprint must not be empty")
+        return v
+
+
+class IngestionAttempt(BaseModel):
+    """Observable record of one feed or manual ingestion attempt."""
+
+    model_config = {"frozen": True}
+
+    id: UUID = Field(default_factory=uuid4)
+    source_id: UUID
+    source_feed_id: UUID | None = None
+    requested_url: str
+    canonical_url: str | None = None
+    url_fingerprint: str | None = None
+    status: IngestionStatus = IngestionStatus.PENDING
+    http_status: int | None = None
+    extractor: ExtractorKind | None = None
+    article_id: UUID | None = None
+    error_code: str | None = None
+    error_summary: str | None = None
+    started_at: datetime = Field(default_factory=_utc_now)
+    completed_at: datetime | None = None

@@ -202,7 +202,8 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
     )
     batch = ArticleBatch(
         article_ids=[article1.id, article2.id, article3.id],
-        grouping_method=GroupingMethod.TITLE_COSINE,
+        batch_key=f"test:{article1.id},{article2.id},{article3.id}",
+        grouping_method=GroupingMethod.TITLE_TOKEN_JACCARD,
         embedding_model="test-emb",
     )
     summary = BatchSummary(

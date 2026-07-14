@@ -6,6 +6,33 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
+## Session: RSS-to-Daily-Brief Vertical Slice (2026-07-13)
+
+Spec: `docs/superpowers/specs/2026-07-13-rss-daily-brief-design.md`
+Plan: `docs/superpowers/plans/2026-07-13-rss-daily-brief.md`
+
+- [x] Task 1: Domain models (`SourceFeed`, `IngestionAttempt`, enums; `batch_key` deferred to Task 2) + config settings (`542215a`)
+- [x] Task 2: Persistence schema + Alembic migration (source_feed, ingestion_attempt, batch constraints) (`315279d`)
+- [x] Task 3: Repositories (feed/attempt/article/batch/summary lookups) (`374164d`)
+- [x] Task 4: `UrlCanonicalizer` + shared bounded-fetch/SSRF helper (`1ab237f`)
+- [x] Task 5: `FeedClient` + `FeedParser` (`165540e`)
+- [x] Task 6: HTML cleaner + `ArticleExtractor` (primary + Crawl4AI fallback) (`24f5c4c`)
+  - [x] Extension: isolate crawl4ai's import-time `load_dotenv()` pollution from the test suite (env_ignore_empty, delenv fixes, root conftest.py) (`56a08d4`)
+- [x] Task 7: `ArticleBatcher` (`3278c76`)
+- [x] Task 8: `BatchSummarizer` (`1970485`)
+- [x] Task 9: `IngestionService` (`1424473`)
+  - [x] Extension: `ExtractedArticle` page-metadata publish time/author, discovered as a Task 6 gap while designing this task (`0cb94fc`)
+- [x] Task 10: `DailyBriefPipeline` (`edd4845`)
+  - [x] Fix: idempotent-rerun citation-exclusion + no-content short-circuit bugs, found via the end-to-end integration test (same commit)
+- [x] Task 11: Runtime wiring + scheduler (`a32b407`)
+- [x] Task 12: API routes (sources, ingestion, pipelines/daily, briefs) (`b26c667`, tests `197e0d0`)
+  - [x] Fix: /briefs date-cutoff exclusion bug found + fixed during review (same commit as production code)
+  - [x] Fix: TestClient lifespan never entered + accidental-pass auth test, found + fixed while verifying test coverage (test commit)
+- [x] Task 13: Integration/API test sweep + success-criteria verification (see commit body for the full spec §11 checklist)
+- [x] Task 14: Documentation reconciliation (`613e256`; written directly, Grok delegation killed 3x with no output)
+- [x] Task 15: Submit PR (#3), security review + code review (self-conducted, native Agent tooling; Grok fallback clause invoked after Task 14's 3x failure) - 2 confirmed SSRF findings fixed (`36bd5db`), 1 rejected; code review raised 2 Important findings, 1 accepted as pre-existing out-of-scope, 1 refuted as a false positive with code-level evidence - see PR #3 comments
+  - [x] Fix: CI-only failures (Docker unavailable locally, so this never surfaced pre-push) - 5 repository/integration test modules shared one physical CI Postgres database with no per-test cleanup, causing unique-constraint collisions and unscoped-query assertions to see leftover rows from earlier tests; added `truncate_domain_tables()` and wired it into each affected module's `migrated` fixture (`9fd0b72`) - CI green on re-run
+
 ## Session: Harness Design (2026-07-10)
 
 - [x] Write and validate the approved local-first technical harness specification.

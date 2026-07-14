@@ -11,6 +11,10 @@ from analyst_engine.domain.models import Cadence, WorkflowRun, WorkflowStatus
 def _runtime() -> Mock:
     runtime = Mock()
     runtime.settings = Mock()
+    # Explicit, not relying on Mock's default truthiness: these tests exercise
+    # /workflows/trigger's dependency wiring, not auth policy, so they opt into
+    # the local-dev-only lenient path deliberately rather than by accident.
+    runtime.settings.allow_unauthenticated_write = True
     runtime.engine = Mock()
     runtime.session_factory = Mock()
     runtime.gateway = Mock()

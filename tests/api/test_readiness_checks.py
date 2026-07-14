@@ -22,7 +22,7 @@ class _ConnectionContext:
         return None
 
 
-def _engine(*, revision: str | None = "963e5ab691b1", error: Exception | None = None) -> Mock:
+def _engine(*, revision: str | None = "6b135f7a55de", error: Exception | None = None) -> Mock:
     connection = Mock()
     result = Mock()
     result.scalar_one_or_none.return_value = revision

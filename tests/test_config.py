@@ -51,7 +51,8 @@ def test_settings_loads_with_all_optional_configuration() -> None:
     assert settings.temporal_evaluation_corpus_path == Path("fixtures/holdout.jsonl")
 
 
-def test_settings_rejects_missing_dashscope_api_key() -> None:
+def test_settings_rejects_missing_dashscope_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     with pytest.raises(ValidationError) as exc_info:
         Settings(database_url=_VALID_DATABASE_URL)
 
@@ -170,7 +171,8 @@ def test_settings_loads_openrouter_provider_defaults_without_dashscope_key() -> 
     assert settings.openrouter_max_retries == 3
 
 
-def test_settings_requires_key_for_selected_provider() -> None:
+def test_settings_requires_key_for_selected_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     with pytest.raises(ValidationError, match="openrouter_api_key is required"):
         Settings(model_provider="openrouter", database_url=_VALID_DATABASE_URL)
 

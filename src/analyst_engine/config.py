@@ -44,6 +44,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        env_ignore_empty=True,
     )
 
     model_provider: ModelProvider = Field(
@@ -151,6 +152,78 @@ class Settings(BaseSettings):
         ge=0,
         description="Max retries for retryable OpenRouter errors.",
     )
+
+    # Ingestion / batching / pipeline
+    feed_request_timeout_seconds: float = Field(
+        default=15.0,
+        gt=0,
+        description="Timeout for feed HTTP requests (seconds).",
+    )
+    feed_response_size_limit_bytes: int = Field(
+        default=5_000_000,
+        gt=0,
+        description="Maximum accepted feed document size in bytes.",
+    )
+    feed_user_agent: str = Field(
+        default="AnalystEngine/0.1 (+https://github.com/RavindraTarunokusumo/AgenticAnalyst)",
+        description="User-Agent header sent to feeds and article sources.",
+    )
+    default_poll_interval_minutes: int = Field(
+        default=30,
+        gt=0,
+        description="Default polling interval for a newly registered feed.",
+    )
+    article_min_content_length: int = Field(
+        default=200,
+        gt=0,
+        description="Minimum cleaned-content length for an article to be accepted.",
+    )
+    article_max_response_size_bytes: int = Field(
+        default=10_000_000,
+        gt=0,
+        description="Maximum accepted article page response size in bytes.",
+    )
+    allowed_languages: list[str] = Field(
+        default_factory=lambda: ["en"],
+        description="Languages eligible for batching; other languages may be stored but excluded.",
+    )
+    title_similarity_threshold: float = Field(
+        default=0.35,
+        gt=0,
+        le=1,
+        description="Title-token Jaccard similarity threshold for batch grouping.",
+    )
+    grouping_algorithm_version: str = Field(
+        default="v1",
+        description="Version tag for the deterministic batching algorithm.",
+    )
+    batch_summary_prompt_version: str = Field(
+        default="v1",
+        description="Version tag for the batch-summary prompt template.",
+    )
+    max_feeds_per_run: int = Field(
+        default=50,
+        gt=0,
+        description="Maximum feeds polled per pipeline run.",
+    )
+    max_articles_per_run: int = Field(
+        default=200,
+        gt=0,
+        description="Maximum articles selected for batching per pipeline run.",
+    )
+    allow_unauthenticated_write: bool = Field(
+        default=False,
+        description="Explicit local-development opt-in to accept write/trigger requests "
+        "without an API key. Must stay false outside local development.",
+    )
+
+    @field_validator("allowed_languages")
+    @classmethod
+    def validate_allowed_languages(cls, value: list[str]) -> list[str]:
+        if not value:
+            msg = "allowed_languages must not be empty"
+            raise ValueError(msg)
+        return value
 
     @field_validator("dashscope_api_key", "openrouter_api_key", mode="before")
     @classmethod

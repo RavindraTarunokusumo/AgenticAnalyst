@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from datetime import date
-from typing import Any
+from datetime import date, datetime, timedelta
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.responses import JSONResponse
@@ -15,7 +15,28 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from analyst_engine.api.readiness import ReadinessStatus, check_readiness
 from analyst_engine.config import Settings
-from analyst_engine.runtime import RuntimeDependencies, create_runtime
+from analyst_engine.domain.models import Cadence, IngestionStatus, Source, SourceFeed
+from analyst_engine.ingestion.canonicalize import UrlValidationError, canonicalize_url
+from analyst_engine.persistence.engine import session_scope
+from analyst_engine.persistence.repositories import (
+    get_articles_by_ids,
+    get_batch_summaries_by_ids,
+    get_brief_by_id,
+    get_source_by_stable_id,
+    get_sources_by_ids,
+    list_ingestion_attempts,
+    list_prior_briefs,
+    list_source_feeds_for_source,
+    list_sources,
+    upsert_source,
+    upsert_source_feed,
+)
+from analyst_engine.runtime import (
+    RuntimeDependencies,
+    build_daily_brief_pipeline,
+    build_ingestion_service,
+    create_runtime,
+)
 from analyst_engine.workflows.runner import WorkflowRunner
 
 # Very simple harness auth (token from env or header for local dev)
@@ -34,9 +55,151 @@ class TriggerResponse(BaseModel):
     idempotency_key: str
 
 
+class RegisterFeedRequest(BaseModel):
+    feed_url: str
+    enabled: bool = True
+    poll_interval_minutes: int | None = None
+
+
+class RegisterSourceRequest(BaseModel):
+    stable_id: str
+    name: str
+    normalized_domain: str
+    feeds: list[RegisterFeedRequest] = []
+
+
+class FeedHealthResponse(BaseModel):
+    id: UUID
+    feed_url: str
+    enabled: bool
+    poll_interval_minutes: int
+    last_polled_at: datetime | None
+    last_success_at: datetime | None
+    last_error_summary: str | None
+
+
+class SourceResponse(BaseModel):
+    id: UUID
+    stable_id: str
+    name: str
+    normalized_domain: str
+    feeds: list[FeedHealthResponse]
+
+
+class IngestUrlsRequest(BaseModel):
+    source_id: UUID
+    urls: list[str]
+
+
+class IngestionResultResponse(BaseModel):
+    candidate_url: str
+    status: str
+    article_id: UUID | None
+    error_code: str | None
+    error_summary: str | None
+
+
+class IngestionAttemptResponse(BaseModel):
+    id: UUID
+    source_id: UUID
+    source_feed_id: UUID | None
+    requested_url: str
+    canonical_url: str | None
+    status: str
+    http_status: int | None
+    extractor: str | None
+    article_id: UUID | None
+    error_code: str | None
+    error_summary: str | None
+    started_at: datetime
+    completed_at: datetime | None
+
+
+class TriggerDailyPipelineRequest(BaseModel):
+    target_date: date
+
+
+class DailyPipelineResultResponse(BaseModel):
+    target_date: date
+    feeds_polled: int
+    articles_succeeded: int
+    articles_duplicate: int
+    articles_failed: int
+    batches_created: int
+    batches_reused: int
+    summaries_created: int
+    summaries_reused: int
+    summaries_selected: int
+    is_no_content: bool
+    workflow_run_id: UUID | None
+    workflow_status: str | None
+    brief_id: UUID | None
+
+
+class ResolvedCitationResponse(BaseModel):
+    article_id: UUID
+    excerpt: str | None
+    article_title: str
+    article_url: str
+    source_name: str
+
+
+class ResolvedBatchSummaryResponse(BaseModel):
+    id: UUID
+    model: str
+    prompt_version: str
+    summary: str
+    source_notes: str | None
+    entities: list[str]
+    topics: list[str]
+    citations: list[ResolvedCitationResponse]
+
+
+class BriefListItemResponse(BaseModel):
+    id: UUID
+    cadence: str
+    covered_start: date
+    covered_end: date
+    created_at: datetime
+
+
+class BriefDetailResponse(BaseModel):
+    id: UUID
+    cadence: str
+    covered_start: date
+    covered_end: date
+    content: str
+    narrative_state_version_id: UUID | None
+    created_by_run_id: UUID
+    created_at: datetime
+    cited_summaries: list[ResolvedBatchSummaryResponse]
+
+
 def get_settings() -> Settings:
     # In real app this would be injected from lifespan or dependency
     return Settings()  # relies on .env
+
+
+def _feed_to_health_response(feed: SourceFeed) -> FeedHealthResponse:
+    return FeedHealthResponse(
+        id=feed.id,
+        feed_url=feed.feed_url,
+        enabled=feed.enabled,
+        poll_interval_minutes=feed.poll_interval_minutes,
+        last_polled_at=feed.last_polled_at,
+        last_success_at=feed.last_success_at,
+        last_error_summary=feed.last_error_summary,
+    )
+
+
+def _source_to_response(source: Source, feeds: list[SourceFeed]) -> SourceResponse:
+    return SourceResponse(
+        id=source.id,
+        stable_id=source.stable_id,
+        name=source.name,
+        normalized_domain=source.normalized_domain,
+        feeds=[_feed_to_health_response(feed) for feed in feeds],
+    )
 
 
 def create_app(
@@ -55,9 +218,17 @@ def create_app(
                 runtime.session_factory,
                 runtime.checkpointer_factory,
             )
+            ingestion_service = build_ingestion_service(runtime)
+            pipeline = build_daily_brief_pipeline(
+                runtime,
+                ingestion_service=ingestion_service,
+                runner=runner,
+            )
             app.state.runtime = runtime
             app.state.engine = runtime.engine
             app.state.runner = runner
+            app.state.ingestion_service = ingestion_service
+            app.state.pipeline = pipeline
             yield
         finally:
             await runtime.close()
@@ -78,10 +249,10 @@ def create_app(
         )
 
     async def _require_key(key: str | None = Security(API_KEY_HEADER)) -> str:
-        # For harness: accept any non-empty or allow open in local
         if key is None or not key.strip():
-            # Allow unauthenticated in pure local harness mode
-            return "local"
+            if app.state.runtime.settings.allow_unauthenticated_write:
+                return "local"
+            raise HTTPException(status_code=401, detail="API key required")
         return key
 
     @app.post("/workflows/trigger", response_model=TriggerResponse)
@@ -89,7 +260,6 @@ def create_app(
         req: TriggerRequest,
         _key: str = Depends(_require_key),
     ) -> TriggerResponse:
-        # settings = get_settings()  # available if needed for future
         runner: WorkflowRunner = app.state.runner
         if req.cadence == "daily":
             run = await runner.run_daily(req.covered_start)
@@ -105,9 +275,237 @@ def create_app(
             idempotency_key=run.idempotency_key,
         )
 
-    @app.get("/briefs")
-    async def list_briefs(cadence: str | None = None) -> list[dict[str, Any]]:
-        # Placeholder - real impl would query via repositories
-        return []
+    @app.post("/sources", response_model=SourceResponse)
+    async def register_source(
+        req: RegisterSourceRequest,
+        _key: str = Depends(_require_key),
+    ) -> SourceResponse:
+        runtime: RuntimeDependencies = app.state.runtime
+        settings = runtime.settings
+
+        canonical_feeds: list[tuple[RegisterFeedRequest, str, str]] = []
+        for feed_req in req.feeds:
+            try:
+                canonical_url, fingerprint = canonicalize_url(
+                    feed_req.feed_url, block_private_networks=True
+                )
+            except UrlValidationError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            canonical_feeds.append((feed_req, canonical_url, fingerprint))
+
+        async with session_scope(runtime.session_factory) as session:
+            await upsert_source(
+                session,
+                Source(
+                    stable_id=req.stable_id,
+                    name=req.name,
+                    normalized_domain=req.normalized_domain,
+                ),
+            )
+            persisted = await get_source_by_stable_id(session, req.stable_id)
+            if persisted is None:
+                raise HTTPException(status_code=500, detail="source persistence failed")
+
+            for feed_req, canonical_url, fingerprint in canonical_feeds:
+                await upsert_source_feed(
+                    session,
+                    SourceFeed(
+                        source_id=persisted.id,
+                        feed_url=canonical_url,
+                        feed_url_fingerprint=fingerprint,
+                        enabled=feed_req.enabled,
+                        poll_interval_minutes=(
+                            feed_req.poll_interval_minutes or settings.default_poll_interval_minutes
+                        ),
+                    ),
+                )
+
+            feeds = await list_source_feeds_for_source(session, persisted.id)
+            return _source_to_response(persisted, feeds)
+
+    @app.get("/sources", response_model=list[SourceResponse])
+    async def get_sources() -> list[SourceResponse]:
+        runtime: RuntimeDependencies = app.state.runtime
+        async with session_scope(runtime.session_factory) as session:
+            sources = await list_sources(session)
+            result: list[SourceResponse] = []
+            for source in sources:
+                feeds = await list_source_feeds_for_source(session, source.id)
+                result.append(_source_to_response(source, feeds))
+            return result
+
+    @app.post("/ingestion/urls", response_model=list[IngestionResultResponse])
+    async def ingest_urls(
+        req: IngestUrlsRequest,
+        _key: str = Depends(_require_key),
+    ) -> list[IngestionResultResponse]:
+        results = await app.state.ingestion_service.ingest_urls(req.source_id, req.urls)
+        return [
+            IngestionResultResponse(
+                candidate_url=result.candidate_url,
+                status=result.status.value,
+                article_id=result.article_id,
+                error_code=result.error_code,
+                error_summary=result.error_summary,
+            )
+            for result in results
+        ]
+
+    @app.get("/ingestion/attempts", response_model=list[IngestionAttemptResponse])
+    async def get_ingestion_attempts(
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[IngestionAttemptResponse]:
+        parsed_status: IngestionStatus | None = None
+        if status is not None:
+            try:
+                parsed_status = IngestionStatus(status)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="unknown status") from exc
+
+        runtime: RuntimeDependencies = app.state.runtime
+        async with session_scope(runtime.session_factory) as session:
+            attempts = await list_ingestion_attempts(session, status=parsed_status, limit=limit)
+
+        return [
+            IngestionAttemptResponse(
+                id=attempt.id,
+                source_id=attempt.source_id,
+                source_feed_id=attempt.source_feed_id,
+                requested_url=attempt.requested_url,
+                canonical_url=attempt.canonical_url,
+                status=attempt.status.value,
+                http_status=attempt.http_status,
+                extractor=attempt.extractor.value if attempt.extractor is not None else None,
+                article_id=attempt.article_id,
+                error_code=attempt.error_code,
+                error_summary=attempt.error_summary,
+                started_at=attempt.started_at,
+                completed_at=attempt.completed_at,
+            )
+            for attempt in attempts
+        ]
+
+    @app.post("/pipelines/daily", response_model=DailyPipelineResultResponse)
+    async def trigger_daily_pipeline(
+        req: TriggerDailyPipelineRequest,
+        _key: str = Depends(_require_key),
+    ) -> DailyPipelineResultResponse:
+        result = await app.state.pipeline.run(req.target_date)
+        return DailyPipelineResultResponse(
+            target_date=result.target_date,
+            feeds_polled=result.feeds_polled,
+            articles_succeeded=result.articles_succeeded,
+            articles_duplicate=result.articles_duplicate,
+            articles_failed=result.articles_failed,
+            batches_created=result.batches_created,
+            batches_reused=result.batches_reused,
+            summaries_created=result.summaries_created,
+            summaries_reused=result.summaries_reused,
+            summaries_selected=result.summaries_selected,
+            is_no_content=result.is_no_content,
+            workflow_run_id=result.workflow_run_id,
+            workflow_status=result.workflow_status.value if result.workflow_status else None,
+            brief_id=result.brief_id,
+        )
+
+    @app.get("/briefs", response_model=list[BriefListItemResponse])
+    async def list_briefs(cadence: str = "daily") -> list[BriefListItemResponse]:
+        try:
+            parsed_cadence = Cadence(cadence)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="unknown cadence") from exc
+
+        runtime: RuntimeDependencies = app.state.runtime
+        async with session_scope(runtime.session_factory) as session:
+            # list_prior_briefs uses covered_end < before (strictly earlier) -
+            # its other caller needs that for narrative-context loading, but a
+            # brief listing must include one generated earlier today, so push
+            # the cutoff to tomorrow rather than excluding today's own brief.
+            briefs = await list_prior_briefs(
+                session, parsed_cadence, before=date.today() + timedelta(days=1)
+            )
+
+        return [
+            BriefListItemResponse(
+                id=brief.id,
+                cadence=brief.cadence.value,
+                covered_start=brief.covered_start,
+                covered_end=brief.covered_end,
+                created_at=brief.created_at,
+            )
+            for brief in briefs
+        ]
+
+    @app.get("/briefs/{brief_id}", response_model=BriefDetailResponse)
+    async def get_brief_detail(brief_id: UUID) -> BriefDetailResponse:
+        runtime: RuntimeDependencies = app.state.runtime
+        async with session_scope(runtime.session_factory) as session:
+            brief = await get_brief_by_id(session, brief_id)
+            if brief is None:
+                raise HTTPException(status_code=404, detail="brief not found")
+
+            summaries = await get_batch_summaries_by_ids(session, brief.cited_batch_summary_ids)
+            article_ids = {
+                citation.article_id for summary in summaries for citation in summary.citations
+            }
+            articles = await get_articles_by_ids(session, list(article_ids))
+            sources = await get_sources_by_ids(
+                session, list({article.source_id for article in articles})
+            )
+
+        articles_by_id = {article.id: article for article in articles}
+        sources_by_id = {source.id: source for source in sources}
+
+        cited_summaries: list[ResolvedBatchSummaryResponse] = []
+        for summary in summaries:
+            resolved_citations: list[ResolvedCitationResponse] = []
+            for citation in summary.citations:
+                article = articles_by_id.get(citation.article_id)
+                if article is None:
+                    resolved_citations.append(
+                        ResolvedCitationResponse(
+                            article_id=citation.article_id,
+                            excerpt=citation.excerpt,
+                            article_title="",
+                            article_url="",
+                            source_name="",
+                        )
+                    )
+                    continue
+                source = sources_by_id.get(article.source_id)
+                resolved_citations.append(
+                    ResolvedCitationResponse(
+                        article_id=citation.article_id,
+                        excerpt=citation.excerpt,
+                        article_title=article.title,
+                        article_url=article.url,
+                        source_name=source.name if source is not None else "",
+                    )
+                )
+            cited_summaries.append(
+                ResolvedBatchSummaryResponse(
+                    id=summary.id,
+                    model=summary.model,
+                    prompt_version=summary.prompt_version,
+                    summary=summary.summary,
+                    source_notes=summary.source_notes,
+                    entities=summary.entities,
+                    topics=summary.topics,
+                    citations=resolved_citations,
+                )
+            )
+
+        return BriefDetailResponse(
+            id=brief.id,
+            cadence=brief.cadence.value,
+            covered_start=brief.covered_start,
+            covered_end=brief.covered_end,
+            content=brief.content,
+            narrative_state_version_id=brief.narrative_state_version_id,
+            created_by_run_id=brief.created_by_run_id,
+            created_at=brief.created_at,
+            cited_summaries=cited_summaries,
+        )
 
     return app

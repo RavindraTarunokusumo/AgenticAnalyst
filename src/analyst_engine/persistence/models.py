@@ -60,12 +60,17 @@ class ArticleBatch(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     article_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=False)
+    batch_key: Mapped[str] = mapped_column(String(256), unique=True, nullable=False)
     grouping_method: Mapped[str] = mapped_column(String(64), nullable=False)
     embedding_model: Mapped[str] = mapped_column(String(128), nullable=False)
     similarity_threshold: Mapped[float | None] = mapped_column(Float)
     grouping_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.now(UTC), index=True
+    )
+
+    __table_args__ = (
+        sa.Index("ix_article_batch_article_ids", "article_ids", postgresql_using="gin"),
     )
 
 
@@ -83,6 +88,64 @@ class BatchSummary(Base):
     citations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.now(UTC), index=True
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "batch_id", "model", "prompt_version", name="uq_batch_summary_identity"
+        ),
+    )
+
+
+class SourceFeed(Base):
+    __tablename__ = "source_feed"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    feed_url: Mapped[str] = mapped_column(Text, nullable=False)
+    feed_url_fingerprint: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    enabled: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
+    poll_interval_minutes: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    etag: Mapped[str | None] = mapped_column(Text)
+    last_modified: Mapped[str | None] = mapped_column(Text)
+    last_polled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_summary: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
+    )
+
+    __table_args__ = (sa.ForeignKeyConstraint(["source_id"], ["source.id"], ondelete="RESTRICT"),)
+
+
+class IngestionAttempt(Base):
+    __tablename__ = "ingestion_attempt"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    source_feed_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    requested_url: Mapped[str] = mapped_column(Text, nullable=False)
+    canonical_url: Mapped[str | None] = mapped_column(Text)
+    url_fingerprint: Mapped[str | None] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    http_status: Mapped[int | None] = mapped_column(sa.Integer)
+    extractor: Mapped[str | None] = mapped_column(String(32))
+    article_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    error_code: Mapped[str | None] = mapped_column(String(128))
+    error_summary: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        sa.ForeignKeyConstraint(["source_id"], ["source.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["source_feed_id"], ["source_feed.id"], ondelete="SET NULL"),
     )
 
 

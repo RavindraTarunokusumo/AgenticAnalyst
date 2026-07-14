@@ -8,6 +8,9 @@ from contextlib import suppress
 from datetime import UTC, date, datetime
 from typing import Any
 
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from analyst_engine.domain.models import (
     Article,
     ArticleBatch,
@@ -20,6 +23,21 @@ from analyst_engine.domain.models import (
     Source,
 )
 from analyst_engine.models.gateway import ModelGateway, ModelTask, ModelUsage
+from analyst_engine.persistence.engine import session_scope
+
+_DOMAIN_TABLES = (
+    "workflow_run",
+    "embedding",
+    "brief",
+    "prediction_expectation",
+    "narrative_state_version",
+    "ingestion_attempt",
+    "source_feed",
+    "batch_summary",
+    "article_batch",
+    "article",
+    "source",
+)
 
 
 class FakeModelGateway(ModelGateway):
@@ -70,9 +88,11 @@ def make_article(source_id: uuid.UUID, published: date) -> Article:
 
 
 def make_batch(articles: list[Article]) -> ArticleBatch:
+    article_ids = [a.id for a in articles]
     return ArticleBatch(
-        article_ids=[a.id for a in articles],
-        grouping_method=GroupingMethod.TITLE_COSINE,
+        article_ids=article_ids,
+        batch_key="fake:" + ",".join(str(a) for a in article_ids),
+        grouping_method=GroupingMethod.TITLE_TOKEN_JACCARD,
         embedding_model="fake",
     )
 
@@ -105,6 +125,22 @@ def make_narrative() -> NarrativeStateVersion:
         state={"version": 1},
         change_log=["init"],
     )
+
+
+async def truncate_domain_tables(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """Wipe all domain tables so each test starts from a clean slate.
+
+    Repository/integration test modules that read DATABASE_URL (CI's shared
+    Postgres service, not a per-module Testcontainer) all point at the same
+    physical database with no other isolation between tests. Without this,
+    a row inserted by one test/module collides with an identical fixture
+    literal in another (unique constraints) or inflates unscoped COUNT/ORDER
+    BY assertions in a later test.
+    """
+    async with session_scope(session_factory) as session:
+        await session.execute(
+            text(f"TRUNCATE TABLE {', '.join(_DOMAIN_TABLES)} RESTART IDENTITY CASCADE")
+        )
 
 
 def docker_endpoint_available() -> bool:

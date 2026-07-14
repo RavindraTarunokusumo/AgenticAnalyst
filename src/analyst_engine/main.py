@@ -8,7 +8,13 @@ import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from analyst_engine.config import ProcessMode, Settings
-from analyst_engine.runtime import RuntimeDependencies, create_runtime
+from analyst_engine.pipeline.daily_brief import DailyBriefPipeline
+from analyst_engine.runtime import (
+    RuntimeDependencies,
+    build_daily_brief_pipeline,
+    build_ingestion_service,
+    create_runtime,
+)
 from analyst_engine.scheduling import register_schedules
 from analyst_engine.workflows.runner import WorkflowRunner
 
@@ -33,7 +39,7 @@ async def run_scheduler(
     runtime_factory: Callable[[Settings], Awaitable[RuntimeDependencies]] = create_runtime,
     scheduler_factory: Callable[[], AsyncIOScheduler] = AsyncIOScheduler,
     schedule_registrar: Callable[
-        [AsyncIOScheduler, WorkflowRunner, Settings], Awaitable[None]
+        [AsyncIOScheduler, WorkflowRunner, DailyBriefPipeline, Settings], Awaitable[None]
     ] = register_schedules,
     wait_forever: Callable[[], Awaitable[None]] = _wait_forever,
 ) -> None:
@@ -48,8 +54,14 @@ async def run_scheduler(
             runtime.session_factory,
             runtime.checkpointer_factory,
         )
+        ingestion_service = build_ingestion_service(runtime)
+        pipeline = build_daily_brief_pipeline(
+            runtime,
+            ingestion_service=ingestion_service,
+            runner=runner,
+        )
         scheduler = scheduler_factory()
-        await schedule_registrar(scheduler, runner, settings)
+        await schedule_registrar(scheduler, runner, pipeline, settings)
         scheduler.start()
         started = True
         await wait_forever()

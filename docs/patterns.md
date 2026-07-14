@@ -30,6 +30,7 @@ Settings are loaded once at process start (or per test fixture). Long-running op
 - Provider calls, web fetches, and search are behind narrow adapters (ModelGateway, ingestion strategies).
 - No direct SDK or HTTP calls from domain, repositories, or graph nodes except through the approved gateway.
 - LangSmith tracing failures are non-fatal (observability degradation only).
+- URLs are canonicalized and SSRF-checked (`canonicalize_url`) before every request, including every redirect hop - never delegate redirect-following to a client library's own follower for an untrusted URL.
 
 ## Code Style
 
