@@ -31,6 +31,7 @@ Plan: `docs/superpowers/plans/2026-07-13-rss-daily-brief.md`
 - [x] Task 13: Integration/API test sweep + success-criteria verification (see commit body for the full spec §11 checklist)
 - [x] Task 14: Documentation reconciliation (`613e256`; written directly, Grok delegation killed 3x with no output)
 - [x] Task 15: Submit PR (#3), security review + code review (self-conducted, native Agent tooling; Grok fallback clause invoked after Task 14's 3x failure) - 2 confirmed SSRF findings fixed (`36bd5db`), 1 rejected; code review raised 2 Important findings, 1 accepted as pre-existing out-of-scope, 1 refuted as a false positive with code-level evidence - see PR #3 comments
+  - [x] Fix: CI-only failures (Docker unavailable locally, so this never surfaced pre-push) - 5 repository/integration test modules shared one physical CI Postgres database with no per-test cleanup, causing unique-constraint collisions and unscoped-query assertions to see leftover rows from earlier tests; added `truncate_domain_tables()` and wired it into each affected module's `migrated` fixture (`9fd0b72`) - CI green on re-run
 
 ## Session: Harness Design (2026-07-10)
 
