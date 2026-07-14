@@ -25,7 +25,9 @@ Plan: `docs/superpowers/plans/2026-07-13-rss-daily-brief.md`
 - [x] Task 10: `DailyBriefPipeline` (`edd4845`)
   - [x] Fix: idempotent-rerun citation-exclusion + no-content short-circuit bugs, found via the end-to-end integration test (same commit)
 - [x] Task 11: Runtime wiring + scheduler (`a32b407`)
-- [ ] Task 12: API routes (sources, ingestion, pipelines/daily, briefs)
+- [x] Task 12: API routes (sources, ingestion, pipelines/daily, briefs) (`b26c667`, tests `197e0d0`)
+  - [x] Fix: /briefs date-cutoff exclusion bug found + fixed during review (same commit as production code)
+  - [x] Fix: TestClient lifespan never entered + accidental-pass auth test, found + fixed while verifying test coverage (test commit)
 - [ ] Task 13: Integration/API test sweep + success-criteria verification
 - [ ] Task 14: Documentation reconciliation
 
