@@ -28,7 +28,7 @@ Plan: `docs/superpowers/plans/2026-07-13-rss-daily-brief.md`
 - [x] Task 12: API routes (sources, ingestion, pipelines/daily, briefs) (`b26c667`, tests `197e0d0`)
   - [x] Fix: /briefs date-cutoff exclusion bug found + fixed during review (same commit as production code)
   - [x] Fix: TestClient lifespan never entered + accidental-pass auth test, found + fixed while verifying test coverage (test commit)
-- [ ] Task 13: Integration/API test sweep + success-criteria verification
+- [x] Task 13: Integration/API test sweep + success-criteria verification (see commit body for the full spec §11 checklist)
 - [ ] Task 14: Documentation reconciliation
 
 ## Session: Harness Design (2026-07-10)
