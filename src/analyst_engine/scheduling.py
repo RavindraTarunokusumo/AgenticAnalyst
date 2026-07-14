@@ -5,25 +5,32 @@ Only the scheduler process mode registers jobs.
 
 from __future__ import annotations
 
+from datetime import date
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from analyst_engine.config import ProcessMode, Settings
+from analyst_engine.pipeline.daily_brief import DailyBriefPipeline
 from analyst_engine.workflows.runner import WorkflowRunner  # defined later in Task 5/6
 
 
 async def register_schedules(
     scheduler: AsyncIOScheduler,
     runner: WorkflowRunner,
+    pipeline: DailyBriefPipeline,
     settings: Settings,
 ) -> None:
     """Register daily, weekly, monthly jobs (idempotent by key)."""
     if settings.app_process_mode != ProcessMode.SCHEDULER:
         return
 
+    async def _run_daily_pipeline() -> None:
+        await pipeline.run(date.today())
+
     # Daily at 02:00 local
     scheduler.add_job(
-        runner.run_daily,
+        _run_daily_pipeline,
         CronTrigger(hour=2, minute=0),
         id="daily-brief",
         replace_existing=True,

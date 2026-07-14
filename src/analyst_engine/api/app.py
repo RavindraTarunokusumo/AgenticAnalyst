@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from analyst_engine.api.readiness import ReadinessStatus, check_readiness
 from analyst_engine.config import Settings
-from analyst_engine.runtime import RuntimeDependencies, create_runtime
+from analyst_engine.runtime import (
+    RuntimeDependencies,
+    build_daily_brief_pipeline,
+    build_ingestion_service,
+    create_runtime,
+)
 from analyst_engine.workflows.runner import WorkflowRunner
 
 # Very simple harness auth (token from env or header for local dev)
@@ -55,9 +60,17 @@ def create_app(
                 runtime.session_factory,
                 runtime.checkpointer_factory,
             )
+            ingestion_service = build_ingestion_service(runtime)
+            pipeline = build_daily_brief_pipeline(
+                runtime,
+                ingestion_service=ingestion_service,
+                runner=runner,
+            )
             app.state.runtime = runtime
             app.state.engine = runtime.engine
             app.state.runner = runner
+            app.state.ingestion_service = ingestion_service
+            app.state.pipeline = pipeline
             yield
         finally:
             await runtime.close()
