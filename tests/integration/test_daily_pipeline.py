@@ -34,9 +34,12 @@ from analyst_engine.workflows.graphs import FrontierResult
 from analyst_engine.workflows.runner import WorkflowRunner
 
 try:
-    from fixtures import docker_endpoint_available  # type: ignore[import-not-found]
+    from fixtures import (  # type: ignore[import-not-found]
+        docker_endpoint_available,
+        truncate_domain_tables,
+    )
 except ImportError:  # pragma: no cover
-    from tests.fixtures import docker_endpoint_available
+    from tests.fixtures import docker_endpoint_available, truncate_domain_tables
 
 try:
     from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
@@ -185,6 +188,7 @@ async def migrated(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> async_sessionmaker[AsyncSession]:
     await _apply_migrations(test_database_url)
+    await truncate_domain_tables(session_factory)
     return session_factory
 
 

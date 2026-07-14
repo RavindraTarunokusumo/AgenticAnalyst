@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from alembic.config import Config
+from fixtures import truncate_domain_tables  # type: ignore[import-not-found]
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -129,6 +130,7 @@ async def migrated(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> async_sessionmaker[AsyncSession]:
     await _apply_migrations(test_database_url)
+    await truncate_domain_tables(session_factory)
     return session_factory
 
 
