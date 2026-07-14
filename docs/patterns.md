@@ -31,6 +31,8 @@ Settings are loaded once at process start (or per test fixture). Long-running op
 - No direct SDK or HTTP calls from domain, repositories, or graph nodes except through the approved gateway.
 - LangSmith tracing failures are non-fatal (observability degradation only).
 - URLs are canonicalized and SSRF-checked (`canonicalize_url`) before every request, including every redirect hop - never delegate redirect-following to a client library's own follower for an untrusted URL.
+- The validated host is resolved once (`resolve_validated_address`) and the connection is pinned to that literal IP, with the original hostname preserved via the `Host` header and TLS SNI extension - a second, independent DNS lookup at connect time (e.g. httpx re-resolving the hostname) reopens a DNS-rebinding window between validation and connection.
+- A rejected `UrlValidationError`/`PrivateNetworkError` from a primary extractor is terminal, never a trigger for a fallback extractor - a weaker-validated fallback path (e.g. Crawl4AI, which does no host/redirect validation of its own) must not be able to succeed where the primary's SSRF check already blocked the request.
 
 ## Code Style
 

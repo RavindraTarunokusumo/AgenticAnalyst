@@ -31,6 +31,8 @@ Core layers:
 
 Baseline tests construct `Settings` instances inline with deterministic fixture values. Integration and workflow tests share common fixtures for engine, session, and runner construction when Docker is available.
 
+Postgres-backed test modules (any file with its own `migrated` fixture) each read `DATABASE_URL` when set - in CI this is one shared Postgres service, not a per-module container, so every such module's tests run against the same physical database with no isolation beyond what the module provides itself. A module's `migrated` fixture must call `truncate_domain_tables()` (`tests/fixtures.py`) after applying migrations, or its tests can collide with leftover rows from an earlier-run module (unique-constraint violations, or unscoped `COUNT`/`ORDER BY` assertions picking up rows they didn't insert). This only surfaces where a real `DATABASE_URL` is present (i.e. CI, not local runs without Docker) - see `docs/insights.md` for how this was diagnosed.
+
 ## Running Tests
 
 Run all tests with coverage:
