@@ -132,7 +132,12 @@ async def test_bounded_fetch_rejects_redirect_to_private_ip(
     monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.host == "public.example":
+        # The connection is pinned to the validated IP (93.184.216.34), but the
+        # original hostname is preserved via the Host header - that's the fix
+        # under test, so assert on the header, not request.url.host.
+        if request.url.host == "93.184.216.34" and request.headers.get("host") == (
+            "public.example"
+        ):
             return httpx.Response(
                 302,
                 headers={"location": "http://127.0.0.1/internal"},
@@ -144,6 +149,49 @@ async def test_bounded_fetch_rejects_redirect_to_private_ip(
 
     with pytest.raises(PrivateNetworkError, match="127.0.0.1"):
         await _fetch(httpx.MockTransport(handler), canonical)
+
+
+@pytest.mark.asyncio
+async def test_bounded_fetch_pins_connection_to_validated_ip_not_hostname(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The actual TCP/TLS connection must go to the IP just validated, not a
+    fresh resolution of the hostname - otherwise an attacker controlling DNS
+    for the target domain can answer the validation query safely and the
+    connection-time query maliciously (DNS rebinding). Host header and TLS
+    SNI must still carry the original hostname for correct routing/cert checks.
+    """
+
+    def fake_getaddrinfo(
+        host: str,
+        port: int | None,
+        family: int = 0,
+        type: int = 0,
+        proto: int = 0,
+        flags: int = 0,
+    ) -> list[tuple[int, int, int, str, tuple[Any, ...]]]:
+        assert host == "pinned.example"
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", 0)),
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    seen_requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        return httpx.Response(200, content=b"ok", request=request)
+
+    canonical, _ = canonicalize_url("https://pinned.example/page", block_private_networks=True)
+
+    await _fetch(httpx.MockTransport(handler), canonical)
+
+    assert len(seen_requests) == 1
+    sent = seen_requests[0]
+    assert sent.url.host == "93.184.216.34"
+    assert sent.headers.get("host") == "pinned.example"
+    assert sent.extensions.get("sni_hostname") == "pinned.example"
 
 
 @pytest.mark.asyncio

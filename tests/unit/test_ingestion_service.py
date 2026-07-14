@@ -12,6 +12,7 @@ import pytest
 
 from analyst_engine.config import Settings
 from analyst_engine.domain.models import Article, ExtractorKind, IngestionStatus, SourceFeed
+from analyst_engine.ingestion.canonicalize import PrivateNetworkError
 from analyst_engine.ingestion.feed_client import RetryableFeedError
 from analyst_engine.ingestion.models import ExtractedArticle, FeedFetchResult
 from analyst_engine.ingestion.service import IngestionService
@@ -306,6 +307,42 @@ async def test_poll_feed_uses_fallback_when_primary_extraction_is_inadequate(
     assert len(fallback.calls) == 1
     assert results[0].status is IngestionStatus.SUCCEEDED
     assert harness.saved_articles[0].title == "Fallback Title"
+
+
+@pytest.mark.asyncio
+async def test_poll_feed_ssrf_rejection_from_primary_is_terminal_and_skips_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A PrivateNetworkError from the primary extractor (e.g. a redirect that
+    resolves to a private/loopback address) must be terminal. Falling back to
+    Crawl4AI - which performs no host or redirect validation of its own -
+    would turn a blocked SSRF attempt into a successful one via the weaker
+    path, so the fallback extractor must never be invoked in this case.
+    """
+    harness = _ServiceHarness(monkeypatch)
+    feed = _feed()
+    fetch_result = FeedFetchResult(
+        status_code=200,
+        not_modified=False,
+        etag=None,
+        last_modified=None,
+        final_url=feed.feed_url,
+        raw_bytes=_rss_bytes(),
+    )
+    primary = _FakeExtractor(PrivateNetworkError("host resolves to restricted address: 127.0.0.1"))
+    fallback = _FakeExtractor(_valid_extracted())
+    service = harness.build_service(
+        feed_client=_FakeFeedClient(fetch_result),
+        primary=primary,
+        fallback=fallback,
+    )
+
+    results = await service.poll_feed(feed)
+
+    assert len(primary.calls) == 1
+    assert fallback.calls == []
+    assert results[0].status is IngestionStatus.FAILED
+    assert results[0].error_code == "invalid_url"
 
 
 @pytest.mark.asyncio

@@ -19,7 +19,7 @@ from analyst_engine.ingestion.extractor import (
 )
 from analyst_engine.ingestion.feed_client import FeedClient, RetryableFeedError, TerminalFeedError
 from analyst_engine.ingestion.feed_parser import FeedParseError, parse_feed
-from analyst_engine.ingestion.models import ArticleCandidate, IngestionResult
+from analyst_engine.ingestion.models import ArticleCandidate, ExtractedArticle, IngestionResult
 from analyst_engine.persistence.engine import session_scope
 from analyst_engine.persistence.repositories import (
     get_article_by_fingerprint,
@@ -207,13 +207,34 @@ class IngestionService:
                 min_content_length=self._settings.article_min_content_length,
             ):
                 try:
-                    fallback_result = await self._fallback_extractor.extract(canonical_url)
-                    extracted = fallback_result
+                    fallback_result = await self._fallback_extractor_if_safe(canonical_url)
+                    if fallback_result is not None:
+                        extracted = fallback_result
                 except ExtractionFailedError:
                     pass
+        except UrlValidationError as ssrf_exc:
+            # The primary extractor's own SSRF check (e.g. a redirect resolving
+            # to a private/loopback/reserved address) rejected this URL. That
+            # rejection must be terminal, not a signal to retry through the
+            # Crawl4AI fallback, which performs no host or redirect validation
+            # of its own - falling back here would turn a blocked SSRF attempt
+            # into a successful one via the weaker path.
+            return await self._record_failure(
+                candidate,
+                canonical_url,
+                fingerprint,
+                "invalid_url",
+                str(ssrf_exc),
+                started_at,
+            )
         except Exception as primary_exc:
             try:
-                extracted = await self._fallback_extractor.extract(canonical_url)
+                fallback_result = await self._fallback_extractor_if_safe(canonical_url)
+                if fallback_result is None:
+                    raise ExtractionFailedError(
+                        f"fallback rejected re-validation for {canonical_url}"
+                    )
+                extracted = fallback_result
             except Exception as fallback_exc:
                 return await self._record_failure(
                     candidate,
@@ -325,6 +346,24 @@ class IngestionService:
             error_code=None,
             error_summary=None,
         )
+
+    async def _fallback_extractor_if_safe(self, canonical_url: str) -> ExtractedArticle | None:
+        """Re-validate immediately before every Crawl4AI call, not just once upstream.
+
+        Crawl4AIExtractor performs no host or redirect validation of its own, so
+        this is the only SSRF check in effect for the fallback path. Re-checking
+        right before the call (rather than trusting an earlier canonicalization)
+        narrows the window for a DNS answer to change between the primary
+        extractor's attempt and this one, and independently guards the
+        short-content fallback trigger, which never went through a failure path
+        at all. Returns None (not an exception) when re-validation fails, so
+        callers can choose their own terminal-failure wording.
+        """
+        try:
+            canonicalize_url(canonical_url, block_private_networks=True)
+        except UrlValidationError:
+            return None
+        return await self._fallback_extractor.extract(canonical_url)
 
     async def _record_failure(
         self,

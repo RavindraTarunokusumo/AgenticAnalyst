@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import ipaddress
 from dataclasses import dataclass
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 
-from analyst_engine.ingestion.canonicalize import canonicalize_url
+from analyst_engine.ingestion.canonicalize import (
+    canonicalize_url,
+    resolve_validated_address,
+)
 
 MAX_REDIRECTS = 5
 
@@ -60,6 +64,29 @@ def _build_request_headers(
     return headers
 
 
+def _pin_to_validated_address(url: str) -> tuple[str, str]:
+    """Return (url with host replaced by its just-validated IP, original hostname).
+
+    canonicalize_url's own host check and the actual TCP connection httpx makes
+    are two independent DNS lookups; an attacker controlling authoritative DNS
+    for the target domain can answer them differently (DNS rebinding) and slip
+    a private/internal address past validation. Resolving here and connecting
+    directly to the returned IP - with the original hostname preserved via the
+    Host header and TLS SNI extension for correct certificate validation -
+    means the address actually connected to is the exact one just validated,
+    with no further resolution in between.
+    """
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    assert hostname is not None, "bounded_fetch always calls this on an already-canonicalized URL"
+    pinned_ip = resolve_validated_address(hostname, block_private_networks=True)
+    assert pinned_ip is not None, "block_private_networks=True always returns an IP or raises"
+    netloc_host = f"[{pinned_ip}]" if ipaddress.ip_address(pinned_ip).version == 6 else pinned_ip
+    netloc = netloc_host if parsed.port is None else f"{netloc_host}:{parsed.port}"
+    pinned_url = urlunparse((parsed.scheme, netloc, parsed.path, "", parsed.query, ""))
+    return pinned_url, hostname
+
+
 async def _read_bounded_body(response: httpx.Response, size_limit_bytes: int) -> bytes:
     chunks: list[bytes] = []
     total = 0
@@ -88,13 +115,17 @@ async def bounded_fetch(
     current_url, _ = canonicalize_url(url, block_private_networks=True)
 
     for redirect_hops in range(MAX_REDIRECTS + 1):
+        pinned_url, original_host = _pin_to_validated_address(current_url)
+        hop_headers = dict(request_headers)
+        hop_headers["Host"] = original_host
         try:
             async with client.stream(
                 "GET",
-                current_url,
-                headers=request_headers,
+                pinned_url,
+                headers=hop_headers,
                 follow_redirects=False,
                 timeout=timeout,
+                extensions={"sni_hostname": original_host},
             ) as response:
                 if response.status_code in _REDIRECT_STATUS_CODES:
                     location = response.headers.get("location")

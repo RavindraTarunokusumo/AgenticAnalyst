@@ -42,9 +42,20 @@ def _is_restricted_ip(address: ipaddress.IPv4Address | ipaddress.IPv6Address) ->
     )
 
 
-def _validate_host_address(host: str, *, block_private_networks: bool) -> None:
+def resolve_validated_address(host: str, *, block_private_networks: bool) -> str | None:
+    """Resolve and validate a host, returning the specific IP to pin the connection to.
+
+    Returns None when block_private_networks is False (no pinning required).
+    Otherwise resolves via getaddrinfo, rejects if ANY returned address is
+    private/loopback/link-local/multicast/reserved/unspecified, and returns
+    the first validated-safe address. Callers that make the actual network
+    connection MUST connect to this exact returned IP (not re-resolve the
+    hostname themselves) - resolving twice reopens a DNS-rebinding window
+    where an attacker's DNS server answers this validation query safely and
+    a later connection-time query maliciously.
+    """
     if not block_private_networks:
-        return
+        return None
 
     hostname = host.strip()
     if not hostname:
@@ -57,7 +68,7 @@ def _validate_host_address(host: str, *, block_private_networks: bool) -> None:
     else:
         if _is_restricted_ip(literal):
             raise PrivateNetworkError(f"host resolves to restricted address: {hostname}")
-        return
+        return hostname
 
     try:
         addr_infos = socket.getaddrinfo(hostname, None)
@@ -67,14 +78,22 @@ def _validate_host_address(host: str, *, block_private_networks: bool) -> None:
     if not addr_infos:
         raise InvalidHostError(f"unable to resolve host: {hostname}")
 
+    validated_ips: list[str] = []
     for _family, _socktype, _proto, _canonname, sockaddr in addr_infos:
-        ip_str = sockaddr[0]
+        ip_str = str(sockaddr[0])
         try:
             resolved = ipaddress.ip_address(ip_str)
         except ValueError as exc:
             raise InvalidHostError(f"invalid resolved address for host: {hostname}") from exc
         if _is_restricted_ip(resolved):
             raise PrivateNetworkError(f"host resolves to restricted address: {hostname}")
+        validated_ips.append(ip_str)
+
+    return validated_ips[0]
+
+
+def _validate_host_address(host: str, *, block_private_networks: bool) -> None:
+    resolve_validated_address(host, block_private_networks=block_private_networks)
 
 
 def _build_netloc(hostname: str, port: int | None, scheme: str) -> str:
