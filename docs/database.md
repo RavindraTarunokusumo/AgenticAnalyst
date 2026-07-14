@@ -23,6 +23,14 @@ Stable registered source.
 - `name`, `normalized_domain`
 - `created_at`
 
+### source_feed
+Polled RSS/Atom feed belonging to a source.
+- `id`, `source_id` (FK), `feed_url`, `feed_url_fingerprint` (unique), `enabled`, `poll_interval_minutes`, `etag`, `last_modified`, `last_polled_at`, `last_success_at`, `last_error_summary`, created/updated_at
+
+### ingestion_attempt
+Observable record of one feed or manual ingestion attempt (attempts, not the immutable article, absorb failures/duplicates).
+- `id`, `source_id` (FK), `source_feed_id` (nullable FK), `requested_url`, `canonical_url`, `url_fingerprint`, `status` (pending/fetched/duplicate/succeeded/failed), `http_status`, `extractor`, `article_id`, `error_code`, `error_summary`, started/completed_at
+
 ### article
 Immutable captured content with provenance.
 - `id` (UUID PK), `source_id` (FK), `url`, `url_fingerprint` (unique), title, author, published/ingested, language, hashes, `cleaned_content`
@@ -30,11 +38,12 @@ Immutable captured content with provenance.
 
 ### article_batch
 Deterministic 3–5 article grouping.
-- `id`, `article_ids` (array), grouping_method, embedding_model, threshold, grouping_run_id, created_at
+- `id`, `article_ids` (array, GIN-indexed), `batch_key` (unique - derived from ordered article fingerprints + grouping method/version/threshold, makes batch creation idempotent on retry), grouping_method, embedding_model, threshold, grouping_run_id, created_at
 
 ### batch_summary
 Flash model output over one batch (with citations).
 - `id`, `batch_id` (FK), model/prompt_version, summary, source_notes, entities/topics (arrays), `citations` (JSONB), created_at
+- Unique constraint on `(batch_id, model, prompt_version)` - a batch's summary for a given model+prompt version is created at most once.
 
 ### brief
 Cadence synthesis (daily/weekly/monthly).
@@ -62,8 +71,8 @@ Idempotent scheduled execution record.
 ## Migration Rules
 
 - Alembic is the sole mechanism.
-- Initial migration is manual and includes both app tables and checkpoint tables.
-- Migrations are exercised from blank PostgreSQL+pgvector container in integration tests.
+- Initial migration (`963e5ab691b1`) is manual and includes both app tables and checkpoint tables. `6b135f7a55de` adds `source_feed`/`ingestion_attempt` and the `article_batch`/`batch_summary` constraints above.
+- Migrations are exercised from blank PostgreSQL+pgvector container in integration tests (upgrade/base/upgrade roundtrip).
 - Downgrades are provided where feasible.
 - Never edit a committed migration; add a new revision.
 

@@ -211,7 +211,7 @@ docker compose ps
 
 ## Environment Variables
 
-Required and optional settings are documented in `.env.example`. Application runtime configuration (MODEL_PROVIDER, provider keys, etc.) is read directly by the process via Settings (pydantic-settings). For direct non-Compose execution, provide the variables in the runtime environment of the process. Current compose.yaml forwards only APP_PROCESS_MODE, DASHSCOPE_*, DATABASE_URL, LANGSMITH_*, SEARXNG_BASE_URL (and requires POSTGRES_* / SEARXNG_SECRET_KEY for other services). MODEL_PROVIDER and OPENROUTER_* are not forwarded by Compose; to use OpenRouter with Compose provide them via a user-supplied override that explicitly adds `environment:` or `env_file:` for the app service.
+Required and optional settings are documented in `.env.example`. Application runtime configuration (MODEL_PROVIDER, provider keys, etc.) is read directly by the process via Settings (pydantic-settings). For direct non-Compose execution, provide the variables in the runtime environment of the process. Current compose.yaml forwards only APP_PROCESS_MODE, DASHSCOPE_*, DATABASE_URL, LANGSMITH_*, SEARXNG_BASE_URL (and requires POSTGRES_* / SEARXNG_SECRET_KEY for other services). MODEL_PROVIDER and OPENROUTER_* are not forwarded by Compose; to use OpenRouter with Compose provide them via a user-supplied override that explicitly adds `environment:` or `env_file:` for the app service. The RSS ingestion/batching/pipeline settings (feed timeouts, size limits, similarity threshold, etc. - see `.env.example`) all have working defaults and follow the same non-forwarded, override-if-needed pattern.
 
 At minimum, runtime startup requires a database URL and provider credentials (depending on MODEL_PROVIDER):
 

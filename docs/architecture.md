@@ -25,15 +25,16 @@ Compose waits for healthy PostgreSQL and SearXNG services before it starts the
 application. Application health checks are implemented via the readiness
 subsystem rather than temporary file markers: API mode probes the HTTP /readyz
 endpoint; scheduler mode executes the readiness module directly. The app image
-includes Crawl4AI and Playwright Chromium (installed at build) so future
-ingestion work can use the same image.
+includes Crawl4AI and Playwright Chromium (installed at build), used as the
+extraction fallback by the RSS ingestion pipeline (see Ingestion / Batching /
+Summarization / Pipeline below).
 
 ## Module Structure
 
 ### Core / Infrastructure
 
 - `config.py`: typed Settings (pydantic-settings) for direct application runtime configuration. MODEL_PROVIDER and OpenRouter settings (plus others like DATABASE_URL, APP_PROCESS_MODE, LangSmith flags) are read from process environment or .env; Compose currently forwards only a subset (APP_PROCESS_MODE, DASHSCOPE_*, DATABASE_URL, LANGSMITH_* etc.) and does not declare MODEL_PROVIDER or OPENROUTER_* .
-- `runtime.py`: constructs the shared `RuntimeDependencies` bundle (engine, async session factory, ModelGateway, checkpointer factory) from Settings; owns resource cleanup on close.
+- `runtime.py`: constructs the shared `RuntimeDependencies` bundle (engine, async session factory, ModelGateway, checkpointer factory, `httpx.AsyncClient`) from Settings; owns resource cleanup on close. `build_ingestion_service`/`build_daily_brief_pipeline` construct those services identically for API and scheduler, mirroring the pattern already used for `WorkflowRunner`.
 - `persistence/engine.py`: async SQLAlchemy engine + session_scope helper.
 - `persistence/checkpoints.py`: LangGraph AsyncPostgresSaver integration.
 
@@ -54,17 +55,34 @@ ingestion work can use the same image.
 
 ### Services / Workflows
 
-- `workflows/runner.py`: WorkflowRunner coordinates idempotent run lifecycle (ensure/claim), loads context, compiles and invokes the cadence graph with PostgreSQL checkpointer (using stable run ID for thread), and records succeeded/failed only after graph completion (or on error).
+- `workflows/runner.py`: WorkflowRunner coordinates idempotent run lifecycle (ensure/claim), loads context, compiles and invokes the cadence graph with PostgreSQL checkpointer (using stable run ID for thread), and records succeeded/failed only after graph completion (or on error). Unchanged by the RSS ingestion slice; the pipeline below only calls `run_daily`, it never touches claiming/checkpointing/persistence directly.
 - `workflows/graphs.py`: cadence-specific graph builders wired to the ModelGateway.
 - `workflows/state.py`: workflow state contracts.
 
+### Ingestion / Batching / Summarization / Pipeline
+
+- `ingestion/canonicalize.py`: `canonicalize_url` - scheme/credential/host validation, SHA-256 fingerprint, deterministic query-param sorting; rejects private/loopback/link-local/multicast/reserved hosts (checked against every DNS answer, not just the first).
+- `ingestion/bounded_http.py`: `bounded_fetch` - manual redirect walking (never delegates to httpx's follower) so every hop is re-validated through `canonicalize_url`, streamed size-limit enforcement, classified timeout/network errors.
+- `ingestion/feed_client.py` / `feed_parser.py`: conditional-GET feed fetching (ETag/Last-Modified, 304 short-circuit) and pure RSS/Atom parsing into deterministically ordered candidates; tolerates malformed entries.
+- `ingestion/html_clean.py`: stdlib-only (`html.parser`) deterministic title/language/body/publish-time/author extraction; no third-party HTML libraries.
+- `ingestion/extractor.py`: `ArticleExtractor` protocol with `PrimaryHttpExtractor` (bounded HTTP + `html_clean`) and `Crawl4AIExtractor` fallback (real browser, used only when the primary result lacks a title or enough content); `should_use_fallback` is the pure trigger policy.
+- `ingestion/service.py`: `IngestionService` - `poll_feed`/`ingest_urls` share one `_ingest_candidate` path (canonicalize, dedup check before extraction, extraction with fallback, article-shape validation, race-safe persist with fingerprint-uniqueness reload-and-mark-duplicate).
+- `batching/batcher.py`: `batch_articles` - pure, deterministic: language partition, ordering, greedy seed-based title-token Jaccard grouping (3-5), carry-forward under 3, SHA-256 `batch_key`.
+- `summarization/prompts.py` / `summarizer.py`: batch-summary prompt construction (delimited article blocks, explicit anti-prompt-injection system message) and `summarize_batch` (calls `ModelGateway` with `ModelTask.BATCH_SUMMARY`, validates citation article-ID membership and excerpt provenance before persistence).
+- `pipeline/daily_brief.py`: `DailyBriefPipeline.run(target_date)` - the sole entry point for both the scheduler's daily job and `POST /pipelines/daily`. Polls due feeds, selects eligible unbatched articles, forms/reuses batches, creates/reuses summaries, selects summaries eligible for the target date that no *other* date's daily brief has already cited, then calls the unmodified `WorkflowRunner.run_daily`.
+
 ### API / Delivery
 
-- `api/app.py`: FastAPI application factory with lifespan that materializes runtime + runner into app.state. Exposes:
+- `api/app.py`: FastAPI application factory with lifespan that materializes runtime + runner + `IngestionService` + `DailyBriefPipeline` (via `runtime.build_ingestion_service`/`build_daily_brief_pipeline`, used identically by the scheduler) into app.state. Exposes:
   - `GET /healthz`: process liveness.
   - `GET /readyz`: database connectivity + current vs expected Alembic revision (503 when not ready).
   - `POST /workflows/trigger`: request schema accepts cadence, covered_start, covered_end; current execution derives effective covered_end from cadence + covered_start and does not use the supplied covered_end; returns durable run (id, status, idempotency_key) using the runner.
-  - `GET /briefs`: placeholder.
+  - `POST /sources` / `GET /sources`: idempotent source + feed registration (canonicalizes every feed URL via `canonicalize_url`); feed health listing.
+  - `POST /ingestion/urls`: manual URL ingestion through `IngestionService.ingest_urls`.
+  - `GET /ingestion/attempts`: recent attempts, optional status filter.
+  - `POST /pipelines/daily`: triggers `DailyBriefPipeline.run` for a target date.
+  - `GET /briefs`: lists recent briefs by cadence. `GET /briefs/{brief_id}`: full brief with every citation resolved to article title/URL/source name.
+  - Write/trigger routes (`/workflows/trigger`, `POST /sources`, `POST /ingestion/urls`, `POST /pipelines/daily`) require an `X-API-Key` header unless `settings.allow_unauthenticated_write` is explicitly true (local development only); read routes stay open.
 - `api/readiness.py`: `check_readiness` implementation and a CLI entrypoint (`python -m analyst_engine.api.readiness`) used by scheduler container healthcheck.
 
 ### Integrations
@@ -93,12 +111,15 @@ Startup and operation:
 ## Background Jobs
 
 Scheduler mode (APP_PROCESS_MODE=scheduler) runs APScheduler (AsyncIOScheduler)
-and registers daily, weekly, and monthly cadence jobs. Jobs are idempotent via
-the WorkflowRunner: duplicate triggers for the same interval return the existing
-terminal or running run without creating a second row. The runner drives
-checkpointed graph execution using the workflow run ID as the stable correlation
-and checkpoint thread identifier. Success is recorded only after graph
-invocation completes.
+and registers daily, weekly, and monthly cadence jobs. The daily job invokes
+`DailyBriefPipeline.run(date.today())` (polls feeds, batches, summarizes, then
+calls the runner) rather than `WorkflowRunner.run_daily` directly; weekly and
+monthly remain bound to the runner, unchanged and outside this slice's scope.
+Jobs are idempotent via the WorkflowRunner: duplicate triggers for the same
+interval return the existing terminal or running run without creating a second
+row. The runner drives checkpointed graph execution using the workflow run ID
+as the stable correlation and checkpoint thread identifier. Success is
+recorded only after graph invocation completes.
 
 ## External Integrations
 
