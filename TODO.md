@@ -22,7 +22,8 @@ Plan: `docs/superpowers/plans/2026-07-13-rss-daily-brief.md`
 - [x] Task 8: `BatchSummarizer` (`1970485`)
 - [x] Task 9: `IngestionService` (`1424473`)
   - [x] Extension: `ExtractedArticle` page-metadata publish time/author, discovered as a Task 6 gap while designing this task (`0cb94fc`)
-- [ ] Task 10: `DailyBriefPipeline`
+- [x] Task 10: `DailyBriefPipeline` (`edd4845`)
+  - [x] Fix: idempotent-rerun citation-exclusion + no-content short-circuit bugs, found via the end-to-end integration test (same commit)
 - [ ] Task 11: Runtime wiring + scheduler
 - [ ] Task 12: API routes (sources, ingestion, pipelines/daily, briefs)
 - [ ] Task 13: Integration/API test sweep + success-criteria verification
