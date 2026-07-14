@@ -30,6 +30,7 @@ Plan: `docs/superpowers/plans/2026-07-13-rss-daily-brief.md`
   - [x] Fix: TestClient lifespan never entered + accidental-pass auth test, found + fixed while verifying test coverage (test commit)
 - [x] Task 13: Integration/API test sweep + success-criteria verification (see commit body for the full spec §11 checklist)
 - [x] Task 14: Documentation reconciliation (`613e256`; written directly, Grok delegation killed 3x with no output)
+- [x] Task 15: Submit PR (#3), security review + code review (self-conducted, native Agent tooling; Grok fallback clause invoked after Task 14's 3x failure) - 2 confirmed SSRF findings fixed (`36bd5db`), 1 rejected; code review raised 2 Important findings, 1 accepted as pre-existing out-of-scope, 1 refuted as a false positive with code-level evidence - see PR #3 comments
 
 ## Session: Harness Design (2026-07-10)
 
