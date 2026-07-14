@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from analyst_engine.ingestion.html_clean import clean_html
 
 
@@ -110,3 +112,61 @@ def test_clean_html_collapses_whitespace_within_text_fragments() -> None:
     result = clean_html(html)
 
     assert result.text == "Lots of spaces\n\nLine one\nline two"
+
+
+def test_clean_html_extracts_article_published_time_meta_tag() -> None:
+    html = """
+    <html>
+      <head>
+        <meta property="article:published_time" content="2026-07-10T08:00:00Z">
+      </head>
+      <body><p>Published article body.</p></body>
+    </html>
+    """
+
+    result = clean_html(html)
+
+    assert result.published_at == datetime(2026, 7, 10, 8, 0, tzinfo=UTC)
+
+
+def test_clean_html_falls_back_to_time_element_when_meta_missing() -> None:
+    html = """
+    <html>
+      <body>
+        <time datetime="2026-07-10">July 10</time>
+        <p>Article body.</p>
+      </body>
+    </html>
+    """
+
+    result = clean_html(html)
+
+    assert result.published_at == datetime(2026, 7, 10, 0, 0, tzinfo=UTC)
+
+
+def test_clean_html_ignores_malformed_date_strings() -> None:
+    html = """
+    <html>
+      <head>
+        <meta property="article:published_time" content="not-a-real-date">
+      </head>
+      <body><p>Article body.</p></body>
+    </html>
+    """
+
+    result = clean_html(html)
+
+    assert result.published_at is None
+
+
+def test_clean_html_extracts_author_meta_tag() -> None:
+    html = """
+    <html>
+      <head><meta name="author" content="Jane Doe"></head>
+      <body><p>Article body.</p></body>
+    </html>
+    """
+
+    result = clean_html(html)
+
+    assert result.author == "Jane Doe"

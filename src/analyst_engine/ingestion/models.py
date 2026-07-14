@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from analyst_engine.domain.models import ExtractorKind
+from analyst_engine.domain.models import ExtractorKind, IngestionStatus
 
 
 @dataclass(frozen=True)
@@ -35,6 +35,8 @@ class CleanedContent:
     title: str | None
     text: str
     language: str | None
+    published_at: datetime | None
+    author: str | None
 
 
 @dataclass(frozen=True)
@@ -45,3 +47,14 @@ class ExtractedArticle:
     language: str | None
     extractor: ExtractorKind
     raw_content_hash: str
+    published_at: datetime | None
+    author: str | None
+
+
+@dataclass(frozen=True)
+class IngestionResult:
+    candidate_url: str
+    status: IngestionStatus
+    article_id: UUID | None
+    error_code: str | None
+    error_summary: str | None

@@ -157,6 +157,8 @@ def test_should_use_fallback_when_title_missing() -> None:
         language="en",
         extractor=ExtractorKind.PRIMARY_HTTP,
         raw_content_hash="abc",
+        published_at=None,
+        author=None,
     )
 
     assert should_use_fallback(extracted, min_content_length=200) is True
@@ -170,6 +172,8 @@ def test_should_use_fallback_when_content_too_short() -> None:
         language="en",
         extractor=ExtractorKind.PRIMARY_HTTP,
         raw_content_hash="abc",
+        published_at=None,
+        author=None,
     )
 
     assert should_use_fallback(extracted, min_content_length=200) is True
@@ -183,6 +187,8 @@ def test_should_use_fallback_false_when_title_and_length_are_adequate() -> None:
         language="en",
         extractor=ExtractorKind.PRIMARY_HTTP,
         raw_content_hash="abc",
+        published_at=None,
+        author=None,
     )
 
     assert should_use_fallback(extracted, min_content_length=200) is False

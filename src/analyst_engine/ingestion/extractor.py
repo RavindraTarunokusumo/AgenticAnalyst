@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
 import httpx
@@ -10,7 +11,7 @@ from crawl4ai import AsyncWebCrawler, CrawlerRunConfig  # type: ignore[import-un
 
 from analyst_engine.domain.models import ExtractorKind
 from analyst_engine.ingestion.bounded_http import bounded_fetch
-from analyst_engine.ingestion.html_clean import clean_html
+from analyst_engine.ingestion.html_clean import clean_html, parse_datetime_string
 from analyst_engine.ingestion.models import CleanedContent, ExtractedArticle
 
 
@@ -62,6 +63,8 @@ class PrimaryHttpExtractor:
             language=cleaned.language,
             extractor=ExtractorKind.PRIMARY_HTTP,
             raw_content_hash=raw_content_hash,
+            published_at=cleaned.published_at,
+            author=cleaned.author,
         )
 
 
@@ -102,6 +105,8 @@ def _map_crawl_result(result: Any) -> ExtractedArticle:
 
     title = _non_empty_str(metadata.get("title")) or cleaned.title
     language = _non_empty_str(metadata.get("language")) or cleaned.language
+    author = _non_empty_str(metadata.get("author")) or cleaned.author
+    published_at = _extract_published_at_from_metadata(metadata) or cleaned.published_at
     text = _extract_crawl_text(result, cleaned)
 
     final_url = result.redirected_url or result.url
@@ -114,6 +119,8 @@ def _map_crawl_result(result: Any) -> ExtractedArticle:
         language=language,
         extractor=ExtractorKind.CRAWL4AI,
         raw_content_hash=raw_content_hash,
+        published_at=published_at,
+        author=author,
     )
 
 
@@ -127,6 +134,17 @@ def _extract_crawl_text(result: Any, cleaned: CleanedContent) -> str:
         if markdown_text:
             return markdown_text
     return cleaned.text
+
+
+def _extract_published_at_from_metadata(metadata: dict[str, Any]) -> datetime | None:
+    for key in ("published_date", "article:published_time", "article:modified_time"):
+        raw_value = metadata.get(key)
+        if not isinstance(raw_value, str):
+            continue
+        parsed = parse_datetime_string(raw_value)
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def _non_empty_str(value: Any) -> str | None:
