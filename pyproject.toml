@@ -78,6 +78,10 @@ module = "tests.fixtures"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
+module = "conftest"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "apscheduler.*"
 ignore_missing_imports = true
 
