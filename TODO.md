@@ -20,7 +20,8 @@ Plan: `docs/superpowers/plans/2026-07-13-rss-daily-brief.md`
   - [x] Extension: isolate crawl4ai's import-time `load_dotenv()` pollution from the test suite (env_ignore_empty, delenv fixes, root conftest.py) (`56a08d4`)
 - [x] Task 7: `ArticleBatcher` (`3278c76`)
 - [x] Task 8: `BatchSummarizer` (`1970485`)
-- [ ] Task 9: `IngestionService`
+- [x] Task 9: `IngestionService` (`1424473`)
+  - [x] Extension: `ExtractedArticle` page-metadata publish time/author, discovered as a Task 6 gap while designing this task (`0cb94fc`)
 - [ ] Task 10: `DailyBriefPipeline`
 - [ ] Task 11: Runtime wiring + scheduler
 - [ ] Task 12: API routes (sources, ingestion, pipelines/daily, briefs)
