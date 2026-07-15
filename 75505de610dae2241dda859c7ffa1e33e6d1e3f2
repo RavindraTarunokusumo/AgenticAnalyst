@@ -1,0 +1,5 @@
+Task: UI brief-viewer docs
+Summary: Documented the frontend (architecture.md new Frontend/UI section, commands.md npm workflow, changelog.md entry). Completes Task 9/9 of the UI brief-viewer plan.
+Docs: docs/architecture.md, docs/commands.md, docs/changelog.md
+TODO: Session: UI / Brief Viewer (2026-07-15)
+Validation: pending full gate run
