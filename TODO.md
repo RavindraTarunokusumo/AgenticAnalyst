@@ -6,14 +6,6 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
-## Session: Eval Harness Parity Documentation (2026-07-15)
-
-- [x] Document why `tests/evaluation/test_temporal_holdout.py` intentionally
-      drives `WorkflowRunner` directly instead of
-      `DailyBriefPipeline`/`PeriodicBriefPipeline` (chose the "document the
-      shortcut" branch over rerouting - rerouting would require new
-      corpus-to-Postgres seeding infra the suite doesn't otherwise have).
-
 ## Future Backlog
 
 Candidate next slices, roughly in suggested priority order. None have a spec
