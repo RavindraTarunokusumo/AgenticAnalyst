@@ -1,4 +1,19 @@
-"""Opt-in temporal holdout test (marked to be excluded from CI)."""
+"""Opt-in temporal holdout test (marked to be excluded from CI).
+
+Parity note: this drives `WorkflowRunner.run_daily/weekly/monthly` directly,
+not `DailyBriefPipeline`/`PeriodicBriefPipeline` (the path every production
+trigger - scheduler, API, `/workflows/trigger` - actually uses). This is
+intentional, not an oversight: the pipelines only select real evidence
+already persisted in Postgres via repository queries, while this harness
+replays a synthetic in-memory corpus against a runner constructed with
+`session_factory=None`/`checkpointer_factory=None` (no database at all).
+Routing a synthetic corpus through the pipelines would require building
+corpus-to-Postgres seeding (articles/batches/summaries) that doesn't exist
+anywhere else in the suite - a new capability, not a parity fix. If a real
+temporal evaluation harness is ever built, it should seed a corpus through
+`IngestionService`/`batch_articles`/`summarize_batch` into a real database
+and drive the pipelines, not extend this smoke test.
+"""
 
 # mypy: ignore-errors
 from dataclasses import dataclass
