@@ -110,3 +110,34 @@ Record reusable lessons from completed sessions.
 
 - Skill worth adding or updating:
   - A "post-pr-sync" checklist item (fetch + ff-only + worktree audit) could be folded into the existing Post-PR workflow step so it's not rediscovered ad hoc each time.
+
+## 2026-07-15 — Weekly/Monthly Brief Vertical Slice (codex/weekly-monthly-brief-plan, PR #4)
+
+- What worked:
+  - Implementing directly from an already-accepted spec+plan (written in a prior session) meant Steps 1-3 collapsed to a fast orientation pass; the plan's per-task Interfaces (Consumes/Produces) were detailed enough that no clarifying re-reads of the spec were needed mid-task.
+  - `uv sync` failing with a hardlink/file-lock error under OneDrive was resolved the same way as before (`export UV_LINK_MODE=copy`), but this session it *still* failed once more with a transient "process cannot access the file" error even with copy mode — `rm -rf .venv` + a clean re-sync succeeded. Worth trying a full `.venv` wipe immediately rather than retrying `uv sync` in place when copy-mode still fails.
+  - Diff-checking the incoming Post-PR merge range against pre-existing dirty files on `main` (`git diff --stat main..origin/main -- <dirty-file>`) before `git merge --ff-only` — validated again as a clean, repeatable pattern (this is the second session in a row with unrelated uncommitted `CLAUDE.md`/`AGENTS.md` changes sitting on `main` for the entire session).
+  - Grok bundled review (`grok -p "Use /bundled:review --pr #N..." -m grok-composer-2.5-fast --effort high --yolo --output-format json`) ran cleanly in the background this session with no `--always-approve` safety-classifier block (unlike the prior RSS-Daily-Brief session) - worth not assuming the block will recur, but also not assuming it won't.
+  - Verifying each review finding against the actual code before acting (per the receiving-code-review reception protocol) caught that one finding (ambiguous `summaries_selected` on an idempotent retry) was a pre-existing, spec-mandated pattern inherited from `DailyBriefPipeline`, not a defect novel to this PR - pushing back on the behavioral half while keeping the cheap documentation half was the right split.
+
+- What failed / had to be worked around:
+  - GitHub's PR-comment reply endpoint (`POST .../pulls/{pr}/comments/{id}/replies`) returned 422 "user_id can only have one pending review per pull request" until the PENDING review itself was first submitted (`POST .../reviews/{review_id}/events` with `event=COMMENT`). The bundled-review skill posts a PENDING (draft, self-only-visible) review as its side effect; that review must be explicitly submitted before any inline reply is possible - this two-step wasn't obvious from the CLAUDE.md handoff description and cost one failed API call to discover.
+  - `gh pr create --json number,url` doesn't exist - `--json` is not a flag on `gh pr create` (only on `gh pr view`/`gh pr list`). Had to run `gh pr create` plain (it prints the PR URL to stdout) and fetch structured fields with a separate `gh pr view --json` call.
+  - The real defect this session: `ArticleBatch.article_ids` has a `Field(min_length=3, max_length=5)` pydantic constraint, and several new test fixtures (repository window-boundary tests, periodic-pipeline integration tests) constructed batches with only 1-2 articles. This was invisible in every local gate run because the tests live behind a Docker-gated `pg_container` pytest fixture that calls `pytest.skip()` *before* the test function body executes - so the `ArticleBatch(...)` constructor call, and therefore its pydantic validation, never ran locally at all. This is a stricter version of the "Docker-only CI gap" insight from 2026-07-14: it's not that a DB-dependent code path went unexercised, it's that a pure, DB-independent object-construction check got transitively gated behind Docker for no reason other than living inside a Docker-marked test file.
+  - `AskUserQuestion` was rejected once mid-session (asking to confirm push+PR-create); the user answered directly in chat instead ("Yes, push and open PR. Use Grok bundled:review...") rather than through the structured tool. Treated the chat message as the authorization and proceeded - no workflow impact, but a reminder that a rejected permission-tool call isn't necessarily a "stop," it can mean "I'll just tell you directly."
+
+- Useful commands:
+  - `gh pr view <n> --json mergeable,mergeStateStatus` - check merge-readiness before `gh pr merge`.
+  - `gh pr merge <n> --merge --delete-branch=false` - merge commit (not squash) to match this repo's existing merge-commit convention (PR #3's history), keep the branch since worktree cleanup is a separate, confirmed-first step.
+  - `gh api repos/<owner>/<repo>/pulls/<pr>/reviews/<review_id>/events -X POST -f event=COMMENT -f body=...` - submit a PENDING review so its comments become repliable.
+  - `gh api repos/<owner>/<repo>/pulls/<pr>/comments/<comment_id>/replies -f body=...` - reply in a specific review-comment thread (note: `pulls/<pr>/comments/...`, not `pulls/comments/...` - the PR number segment is required or the endpoint 404s).
+  - `gh run watch <id> --exit-status` - block on a specific just-triggered run rather than polling `gh pr checks`.
+
+- Scripts created: none (all direct tool edits and `gh api`/`git` one-liners).
+
+- Workflow improvement:
+  - When a plan calls for a repository-integration test that constructs a domain model with runtime validation (e.g. `ArticleBatch`'s 3-5 item constraint, `Brief`'s non-empty-citations constraint hit in the same session's unit-test-writing phase), sanity-check the constructor call locally in isolation (a bare `python -c` or a tiny non-Docker unit test) *before* wrapping it in a Docker-gated integration test, specifically because Docker-gated tests skip before their body - including any assertion or object-construction inside that body - ever runs on this machine.
+  - Add "submit the PENDING review before attempting inline replies" as an explicit sub-step of the Grok Build Implementation/Review Handoff's review-processing stage, not something to rediscover via a 422.
+
+- Skill worth adding or updating:
+  - The Grok Build Implementation/Review Handoff section (CLAUDE.md) could name the exact `gh api` submit-then-reply sequence for processing PENDING review comments, since the bundled-review skill's own side effect (posting PENDING, not submitted) means every future PR reviewed this way will hit the same 422 without it.
