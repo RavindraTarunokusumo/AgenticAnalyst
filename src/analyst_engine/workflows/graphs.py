@@ -14,6 +14,7 @@ from analyst_engine.domain.models import (
     BatchSummary,
     Brief,
     Cadence,
+    Embedding,
     NarrativeStateVersion,
     PredictionExpectation,
 )
@@ -21,6 +22,7 @@ from analyst_engine.models.gateway import ModelGateway, ModelTask
 from analyst_engine.persistence.engine import session_scope
 from analyst_engine.persistence.repositories import (
     save_brief,
+    save_embedding,
     save_narrative_version,
     save_prediction_expectation,
 )
@@ -149,6 +151,27 @@ def _build_graph(
             for expectation in output.proposed_expectations:
                 await save_prediction_expectation(session, expectation)
             await save_brief(session, output.brief)
+            # Best-effort: a model-side embed() failure or a DB-side save_embedding
+            # flush failure must not roll back the already-flushed brief/narrative/
+            # expectations above. A plain try/except is not enough for the DB-side
+            # case: Postgres aborts the whole transaction on a failed statement, so
+            # the outer session.commit() in session_scope would then fail too. A
+            # SAVEPOINT (begin_nested) isolates either failure to just this block.
+            try:
+                async with session.begin_nested():
+                    vector, _usage = await gateway.embed(
+                        text=output.brief.content, correlation_id=inp.correlation_id
+                    )
+                    await save_embedding(
+                        session,
+                        Embedding(
+                            brief_id=output.brief.id,
+                            model=gateway.get_model_for_task(ModelTask.EMBED),
+                            vector=vector,
+                        ),
+                    )
+            except Exception:
+                pass
         return {
             "brief": output.brief.model_dump(mode="python"),
             "proposed_narrative": output.proposed_narrative_version.model_dump(mode="python"),

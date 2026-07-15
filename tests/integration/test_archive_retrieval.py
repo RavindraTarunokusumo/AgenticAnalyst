@@ -12,6 +12,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from datetime import UTC, date, datetime
+from typing import Any
 
 import pytest
 from alembic.config import Config
@@ -19,13 +20,16 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from alembic import command
 from analyst_engine.config import Settings
-from analyst_engine.domain.models import Brief, Cadence, Embedding
+from analyst_engine.domain.models import BatchSummary, Brief, Cadence, Citation, Embedding
+from analyst_engine.models.gateway import ModelGateway, ModelTask, ModelUsage
 from analyst_engine.persistence.engine import get_async_engine, get_session_factory, session_scope
 from analyst_engine.persistence.repositories import (
+    get_brief_by_cadence_interval,
     save_brief,
     save_embedding,
     search_embeddings_by_similarity,
 )
+from analyst_engine.workflows.graphs import build_daily_graph
 
 try:
     from fixtures import (  # type: ignore[import-not-found]
@@ -259,3 +263,68 @@ async def test_search_respects_limit_and_returns_empty_for_no_embeddings(
     async with session_scope(migrated) as sess:
         limited = await search_embeddings_by_similarity(sess, query_vector, cadence=None, limit=2)
     assert len(limited) == 2
+
+
+class _BadDimensionEmbedGateway(ModelGateway):
+    """`generate()` behaves like the frontier fake; `embed()` returns a vector
+    with the wrong dimension, triggering a real pgvector constraint failure at
+    flush time (not a `ModelError`) - the DB-level failure mode a bare
+    `except ModelError` in the synthesize node would not protect against."""
+
+    async def generate(
+        self,
+        *,
+        task: ModelTask,
+        messages: list[dict[str, str]],
+        output_schema: type[Any],
+        correlation_id: str,
+    ) -> tuple[Any, ModelUsage]:
+        result = output_schema(
+            brief_content="brief for " + correlation_id,
+            narrative_state={"themes": ["test"]},
+            change_log=["synthetic update"],
+            expectations=[],
+        )
+        return result, ModelUsage(model="fake")
+
+    def get_model_for_task(self, task: ModelTask) -> str:
+        return "fake"
+
+    async def embed(self, *, text: str, correlation_id: str) -> tuple[list[float], ModelUsage]:
+        return [0.1, 0.2, 0.3], ModelUsage(model="fake-embed-bad-dim")
+
+
+@pytest.mark.asyncio
+async def test_synthesize_node_persists_brief_despite_db_level_embedding_failure(
+    migrated: async_sessionmaker[AsyncSession],
+) -> None:
+    run_id = uuid.uuid4()
+    summary = BatchSummary(
+        batch_id=uuid.uuid4(),
+        model="test-model",
+        prompt_version="v1",
+        summary="summary",
+        citations=[Citation(article_id=uuid.uuid4(), excerpt="quoted evidence")],
+    )
+    state = {
+        "cadence": Cadence.DAILY.value,
+        "covered_start": "2026-07-10",
+        "covered_end": "2026-07-10",
+        "batch_summaries": [summary.model_dump(mode="python")],
+        "correlation_id": str(run_id),
+    }
+    graph = build_daily_graph(_BadDimensionEmbedGateway(), migrated).compile()
+
+    await graph.ainvoke(state)
+
+    async with session_scope(migrated) as sess:
+        persisted = await get_brief_by_cadence_interval(
+            sess, Cadence.DAILY, date(2026, 7, 10), date(2026, 7, 10)
+        )
+        embeddings = await search_embeddings_by_similarity(
+            sess, _unit_vector(0), cadence=None, limit=10
+        )
+
+    assert persisted is not None
+    assert persisted.created_by_run_id == run_id
+    assert embeddings == []

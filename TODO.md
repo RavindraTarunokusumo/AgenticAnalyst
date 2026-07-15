@@ -27,7 +27,23 @@ Plan: `docs/superpowers/plans/2026-07-15-archive-retrieval.md`
 - [ ] `DashScopeAdapter.embed()` (`models/dashscope.py`)
 - [ ] `OpenRouterAdapter.embed()` (`models/openrouter.py`)
 - [x] `search_embeddings_by_similarity()` repository function
-- [ ] Wire best-effort embedding into `synthesize` node (`workflows/graphs.py`)
+- [x] Wire best-effort embedding into `synthesize` node (`workflows/graphs.py`)
+- [ ] **Scope note** (found during this task): the plan's suggested resolution -
+      a bare `try/except Exception: pass` around `save_embedding` - is not
+      actually transaction-safe. Verified empirically (temporarily reverted the
+      fix and re-ran the new DB-level-failure integration test): when
+      `save_embedding`'s own flush fails at the DB layer (not a `ModelError`),
+      Postgres aborts the whole transaction, and the plain try/except leaves
+      the session in that aborted state - `session_scope`'s subsequent
+      `session.commit()` then raises `PendingRollbackError`, so the brief is
+      *not* actually persisted despite the try/except swallowing the first
+      exception. Used `async with session.begin_nested():` (a SAVEPOINT)
+      around the embed+save_embedding block instead, which isolates either a
+      model-side or DB-side failure from the outer transaction. Covered by a
+      new integration test
+      (`test_synthesize_node_persists_brief_despite_db_level_embedding_failure`)
+      using a fake gateway that returns a wrong-dimension vector to trigger a
+      real pgvector constraint failure.
 - [ ] `GET /archive/search` route + response model (`api/app.py`)
 - [ ] Tests: adapter embed (happy/error)
 - [ ] Tests: best-effort swallow (brief persists despite embed failure)
