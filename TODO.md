@@ -26,12 +26,12 @@ Plan: `docs/superpowers/plans/2026-07-15-archive-retrieval.md`
       green throughout.
 - [ ] `DashScopeAdapter.embed()` (`models/dashscope.py`)
 - [ ] `OpenRouterAdapter.embed()` (`models/openrouter.py`)
-- [ ] `search_embeddings_by_similarity()` repository function
+- [x] `search_embeddings_by_similarity()` repository function
 - [ ] Wire best-effort embedding into `synthesize` node (`workflows/graphs.py`)
 - [ ] `GET /archive/search` route + response model (`api/app.py`)
 - [ ] Tests: adapter embed (happy/error)
 - [ ] Tests: best-effort swallow (brief persists despite embed failure)
-- [ ] Tests: pgvector-backed similarity ordering integration test
+- [x] Tests: pgvector-backed similarity ordering integration test
 - [ ] Docs: `docs/architecture.md`, `docs/changelog.md`
 
 ## Future Backlog
