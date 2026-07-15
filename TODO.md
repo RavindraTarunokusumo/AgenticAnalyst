@@ -12,14 +12,26 @@ Spec: `docs/superpowers/specs/2026-07-15-archive-retrieval-design.md`
 Plan: `docs/superpowers/plans/2026-07-15-archive-retrieval.md`
 
 - [ ] `ModelGateway.embed()` abstract method (`models/gateway.py`)
+- [ ] `FakeModelGateway.embed()` (`tests/fixtures.py`) - same commit as above
+- [ ] **Scope extension** (found during Task 1): the new abstract method makes
+      *every* `ModelGateway` subclass uninstantiable, not just
+      `tests/fixtures.py::FakeModelGateway` as the plan called out - four more
+      test-local fakes also extend `ModelGateway` directly:
+      `tests/unit/test_daily_brief_pipeline.py::_FakeGateway`,
+      `tests/integration/test_periodic_brief_pipeline.py::_CountingGateway`,
+      `tests/unit/test_batch_summarizer.py::_ScriptedGateway`,
+      `tests/integration/test_daily_pipeline.py::_CountingGateway`, and
+      `tests/unit/test_workflow_graphs.py::_Gateway`. Landed `embed()` on all
+      of them in the same commit as the abstract method to keep collection
+      green throughout.
 - [ ] `DashScopeAdapter.embed()` (`models/dashscope.py`)
 - [ ] `OpenRouterAdapter.embed()` (`models/openrouter.py`)
-- [ ] `FakeModelGateway.embed()` (`tests/fixtures.py`) - same commit as above
 - [ ] `search_embeddings_by_similarity()` repository function
 - [ ] Wire best-effort embedding into `synthesize` node (`workflows/graphs.py`)
 - [ ] `GET /archive/search` route + response model (`api/app.py`)
-- [ ] Tests: adapter embed (happy/error), best-effort swallow (brief persists
-      despite embed failure), pgvector-backed similarity ordering integration test
+- [ ] Tests: adapter embed (happy/error)
+- [ ] Tests: best-effort swallow (brief persists despite embed failure)
+- [ ] Tests: pgvector-backed similarity ordering integration test
 - [ ] Docs: `docs/architecture.md`, `docs/changelog.md`
 
 ## Future Backlog

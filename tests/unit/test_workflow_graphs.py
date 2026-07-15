@@ -62,6 +62,9 @@ class _Gateway(ModelGateway):
     def get_model_for_task(self, task: ModelTask) -> str:
         return "fake"
 
+    async def embed(self, *, text: str, correlation_id: str) -> tuple[list[float], ModelUsage]:
+        return [0.1] * 1536, ModelUsage(model="fake-embed")
+
 
 def _input(cadence: Cadence) -> BriefGenerationInput:
     run_id = UUID("00000000-0000-0000-0000-000000000001")

@@ -64,6 +64,9 @@ class _ScriptedGateway(ModelGateway):
     def get_model_for_task(self, task: ModelTask) -> str:
         return _MODEL
 
+    async def embed(self, *, text: str, correlation_id: str) -> tuple[list[float], ModelUsage]:
+        raise AssertionError("gateway.embed should not be called in unit tests")
+
 
 def _make_source() -> Source:
     return Source(

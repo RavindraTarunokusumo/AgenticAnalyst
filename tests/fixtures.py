@@ -43,6 +43,9 @@ _DOMAIN_TABLES = (
 class FakeModelGateway(ModelGateway):
     """Deterministic fake that returns canned structured output."""
 
+    def __init__(self, *, embed_error: Exception | None = None) -> None:
+        self._embed_error = embed_error
+
     async def generate(
         self,
         *,
@@ -70,6 +73,12 @@ class FakeModelGateway(ModelGateway):
 
     def get_model_for_task(self, task: ModelTask) -> str:
         return "fake-model"
+
+    async def embed(self, *, text: str, correlation_id: str) -> tuple[list[float], ModelUsage]:
+        if self._embed_error is not None:
+            raise self._embed_error
+        vector = [float(len(text) % 7 + 1)] * 1536
+        return vector, ModelUsage(model="fake-embed")
 
 
 def make_source() -> Source:
