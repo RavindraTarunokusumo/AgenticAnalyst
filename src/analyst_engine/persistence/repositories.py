@@ -852,6 +852,37 @@ async def list_eligible_unbatched_articles(
     return [_article_to_domain(row) for row in rows]
 
 
+async def list_eligible_batch_summaries_for_window(
+    session: AsyncSession, window_start: date, window_end: date
+) -> list[BatchSummary]:
+    """Batch summaries whose batch has >=1 article published within [window_start, window_end]."""
+
+    window_start_dt = datetime.combine(window_start, time.min, tzinfo=UTC)
+    window_end_dt = datetime.combine(window_end + timedelta(days=1), time.min, tzinfo=UTC)
+    has_article_in_window = exists(
+        select(1)
+        .select_from(ORMArticleBatch)
+        .where(
+            ORMArticleBatch.id == ORMBatchSummary.batch_id,
+            ORMArticle.id == any_(ORMArticleBatch.article_ids),
+            ORMArticle.published_at >= window_start_dt,
+            ORMArticle.published_at < window_end_dt,
+        )
+    )
+    rows = (
+        (
+            await session.execute(
+                select(ORMBatchSummary)
+                .where(has_article_in_window)
+                .order_by(ORMBatchSummary.created_at.asc(), ORMBatchSummary.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_summary_to_domain(row) for row in rows]
+
+
 async def get_article_batch_by_key(session: AsyncSession, batch_key: str) -> ArticleBatch | None:
     row = (
         await session.execute(select(ORMArticleBatch).where(ORMArticleBatch.batch_key == batch_key))

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncIterator
 from contextlib import suppress
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from alembic.config import Config
@@ -29,6 +29,7 @@ from analyst_engine.persistence.repositories import (
     get_articles_by_ids,
     get_sources_by_ids,
     is_batch_summary_cited,
+    list_eligible_batch_summaries_for_window,
     save_article,
     save_article_batch,
     save_batch_summary,
@@ -302,3 +303,153 @@ async def test_is_batch_summary_cited_tracks_daily_citations_only(
             is True
         )
         assert await is_batch_summary_cited(sess, summary.id, Cadence.WEEKLY) is True
+
+
+@pytest.mark.asyncio
+async def test_list_eligible_batch_summaries_for_window_respects_exact_boundary(
+    migrated: async_sessionmaker[AsyncSession],
+) -> None:
+    source = Source(
+        stable_id="pipeline-src-window",
+        name="Window Source",
+        normalized_domain="example.com",
+    )
+    window_start = date(2026, 7, 6)
+    window_end = date(2026, 7, 12)
+
+    def _batch_and_summary(
+        published_at: datetime, *, key: str
+    ) -> tuple[ArticleBatch, BatchSummary, Article]:
+        article = Article(
+            source_id=source.id,
+            url=f"https://example.com/{key}",
+            url_fingerprint=f"fp-{key}",
+            title=f"Window Article {key}",
+            published_at=published_at,
+            cleaned_content=f"Body {key}.",
+        )
+        batch = ArticleBatch(
+            article_ids=[article.id],
+            batch_key=f"batch:window-{key}",
+            grouping_method=GroupingMethod.TITLE_TOKEN_JACCARD,
+            embedding_model="test-emb",
+        )
+        summary = BatchSummary(
+            batch_id=batch.id,
+            model="qwen3.5-flash",
+            prompt_version="v1",
+            summary=f"Summary {key}.",
+            citations=[Citation(article_id=article.id, excerpt=article.cleaned_content)],
+        )
+        return batch, summary, article
+
+    in_lower_boundary = _batch_and_summary(
+        datetime.combine(window_start, datetime.min.time(), tzinfo=UTC), key="lower"
+    )
+    in_upper_boundary = _batch_and_summary(
+        datetime(2026, 7, 12, 23, 59, 59, tzinfo=UTC), key="upper"
+    )
+    before_window = _batch_and_summary(datetime(2026, 7, 5, 23, 59, 59, tzinfo=UTC), key="before")
+    after_window = _batch_and_summary(
+        datetime.combine(window_end + timedelta(days=1), datetime.min.time(), tzinfo=UTC),
+        key="after",
+    )
+
+    async with session_scope(migrated) as sess:
+        await upsert_source(sess, source)
+        for batch, summary, article in (
+            in_lower_boundary,
+            in_upper_boundary,
+            before_window,
+            after_window,
+        ):
+            await save_article(sess, article)
+            await save_article_batch(sess, batch)
+            await save_batch_summary(sess, summary)
+
+        eligible = await list_eligible_batch_summaries_for_window(sess, window_start, window_end)
+
+    eligible_ids = {summary.id for summary in eligible}
+    assert eligible_ids == {in_lower_boundary[1].id, in_upper_boundary[1].id}
+
+
+@pytest.mark.asyncio
+async def test_list_eligible_batch_summaries_for_window_includes_batch_with_mixed_dates(
+    migrated: async_sessionmaker[AsyncSession],
+) -> None:
+    source = Source(
+        stable_id="pipeline-src-window-mixed",
+        name="Window Mixed Source",
+        normalized_domain="example.com",
+    )
+    window_start = date(2026, 7, 6)
+    window_end = date(2026, 7, 12)
+    in_window_article = Article(
+        source_id=source.id,
+        url="https://example.com/mixed-in",
+        url_fingerprint="fp-mixed-in",
+        title="Mixed In Window",
+        published_at=datetime(2026, 7, 8, 12, 0, tzinfo=UTC),
+        cleaned_content="In window body.",
+    )
+    out_of_window_article = Article(
+        source_id=source.id,
+        url="https://example.com/mixed-out",
+        url_fingerprint="fp-mixed-out",
+        title="Mixed Out Of Window",
+        published_at=datetime(2026, 7, 20, 12, 0, tzinfo=UTC),
+        cleaned_content="Out of window body.",
+    )
+    batch = ArticleBatch(
+        article_ids=[in_window_article.id, out_of_window_article.id],
+        batch_key="batch:window-mixed",
+        grouping_method=GroupingMethod.TITLE_TOKEN_JACCARD,
+        embedding_model="test-emb",
+    )
+    summary = BatchSummary(
+        batch_id=batch.id,
+        model="qwen3.5-flash",
+        prompt_version="v1",
+        summary="Mixed batch summary.",
+        citations=[Citation(article_id=in_window_article.id, excerpt="In window body.")],
+    )
+
+    async with session_scope(migrated) as sess:
+        await upsert_source(sess, source)
+        await save_article(sess, in_window_article)
+        await save_article(sess, out_of_window_article)
+        await save_article_batch(sess, batch)
+        await save_batch_summary(sess, summary)
+
+        eligible = await list_eligible_batch_summaries_for_window(sess, window_start, window_end)
+
+    assert {s.id for s in eligible} == {summary.id}
+
+
+@pytest.mark.asyncio
+async def test_list_eligible_batch_summaries_for_window_empty_window_returns_nothing(
+    migrated: async_sessionmaker[AsyncSession],
+) -> None:
+    source = Source(
+        stable_id="pipeline-src-window-empty",
+        name="Window Empty Source",
+        normalized_domain="example.com",
+    )
+    article = Article(
+        source_id=source.id,
+        url="https://example.com/no-summary",
+        url_fingerprint="fp-no-summary",
+        title="No Summary Article",
+        published_at=datetime(2026, 7, 8, 12, 0, tzinfo=UTC),
+        cleaned_content="Body.",
+    )
+
+    async with session_scope(migrated) as sess:
+        await upsert_source(sess, source)
+        await save_article(sess, article)
+
+        eligible = await list_eligible_batch_summaries_for_window(
+            sess, date(2026, 7, 6), date(2026, 7, 12)
+        )
+
+    assert eligible == []

@@ -19,7 +19,7 @@ start at Workflow step 1 (dedicated worktree/branch, e.g.
 - [x] Produce the lightweight implementation plan (6 tasks: repository query,
       `PeriodicBriefPipeline`, runtime/scheduler wiring, API routes +
       `/workflows/trigger` fix, test sweep, docs reconciliation).
-- [ ] Task 1: `list_eligible_batch_summaries_for_window` repository function.
+- [x] Task 1: `list_eligible_batch_summaries_for_window` repository function.
 - [ ] Task 2: `PeriodicBriefPipeline` + `PeriodicPipelineResult`.
 - [ ] Task 3: Runtime wiring + scheduler rebinding.
 - [ ] Task 4: API routes (`/pipelines/weekly`, `/pipelines/monthly`) +
