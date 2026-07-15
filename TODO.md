@@ -56,11 +56,3 @@ behind this ordering.
       initial migration (`docs/database.md`); no schema, no design started.
       Likely the largest single slice on this list - needs its own spec
       before scoping, not a quick follow-on.
-- [ ] **Evaluation-harness parity check.** `tests/evaluation/
-      test_temporal_holdout.py` (opt-in, excluded from routine CI) drives
-      `WorkflowRunner.run_daily/weekly/monthly` directly, bypassing
-      `DailyBriefPipeline`/`PeriodicBriefPipeline` entirely - it now exercises
-      a different code path than every production trigger (scheduler, API,
-      `/workflows/trigger`). Worth a small follow-up to route it through the
-      pipelines instead, or explicitly document why it intentionally
-      shortcuts them.
