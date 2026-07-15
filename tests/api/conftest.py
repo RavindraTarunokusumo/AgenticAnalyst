@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from analyst_engine.api.app import create_app
 from analyst_engine.config import Settings
+from analyst_engine.domain.models import Cadence
 
 
 def make_settings(*, allow_unauthenticated_write: bool = False) -> Settings:
@@ -43,11 +44,21 @@ def patch_lifespan_services(
     *,
     ingestion_service: Mock | None = None,
     pipeline: Mock | None = None,
-) -> tuple[Mock, Mock]:
+    weekly_pipeline: Mock | None = None,
+    monthly_pipeline: Mock | None = None,
+) -> tuple[Mock, Mock, Mock, Mock]:
     if ingestion_service is None:
         ingestion_service = Mock(ingest_urls=AsyncMock(return_value=[]))
     if pipeline is None:
         pipeline = Mock(run=AsyncMock())
+    if weekly_pipeline is None:
+        weekly_pipeline = Mock(run=AsyncMock())
+    if monthly_pipeline is None:
+        monthly_pipeline = Mock(run=AsyncMock())
+    periodic_pipelines_by_cadence = {
+        Cadence.WEEKLY: weekly_pipeline,
+        Cadence.MONTHLY: monthly_pipeline,
+    }
     monkeypatch.setattr("analyst_engine.api.app.session_scope", fake_session_scope)
     monkeypatch.setattr(
         "analyst_engine.api.app.WorkflowRunner",
@@ -61,7 +72,13 @@ def patch_lifespan_services(
         "analyst_engine.api.app.build_daily_brief_pipeline",
         Mock(return_value=pipeline),
     )
-    return ingestion_service, pipeline
+    monkeypatch.setattr(
+        "analyst_engine.api.app.build_periodic_brief_pipeline",
+        Mock(
+            side_effect=lambda _runtime, *, runner, cadence: periodic_pipelines_by_cadence[cadence]
+        ),
+    )
+    return ingestion_service, pipeline, weekly_pipeline, monthly_pipeline
 
 
 def make_app(
@@ -71,6 +88,8 @@ def make_app(
     runtime: Mock | None = None,
     ingestion_service: Mock | None = None,
     pipeline: Mock | None = None,
+    weekly_pipeline: Mock | None = None,
+    monthly_pipeline: Mock | None = None,
 ) -> FastAPI:
     settings = make_settings(allow_unauthenticated_write=allow_unauthenticated_write)
     if runtime is None:
@@ -81,6 +100,8 @@ def make_app(
         monkeypatch,
         ingestion_service=ingestion_service,
         pipeline=pipeline,
+        weekly_pipeline=weekly_pipeline,
+        monthly_pipeline=monthly_pipeline,
     )
     return create_app(
         settings_factory=lambda: settings,
@@ -96,6 +117,8 @@ def make_client(
     runtime: Mock | None = None,
     ingestion_service: Mock | None = None,
     pipeline: Mock | None = None,
+    weekly_pipeline: Mock | None = None,
+    monthly_pipeline: Mock | None = None,
 ) -> TestClient:
     app = make_app(
         monkeypatch,
@@ -103,6 +126,8 @@ def make_client(
         runtime=runtime,
         ingestion_service=ingestion_service,
         pipeline=pipeline,
+        weekly_pipeline=weekly_pipeline,
+        monthly_pipeline=monthly_pipeline,
     )
     client = TestClient(app)
     # Enter the ASGI lifespan explicitly - callers use `client = make_client(...)`

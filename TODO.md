@@ -26,7 +26,7 @@ start at Workflow step 1 (dedicated worktree/branch, e.g.
       parameter (weekly/monthly jobs call their pipeline, not the runner,
       after this task) rather than leaving a dead parameter; call sites in
       `main.py` and the two affected unit test files were updated to match.
-- [ ] Task 4: API routes (`/pipelines/weekly`, `/pipelines/monthly`) +
+- [x] Task 4: API routes (`/pipelines/weekly`, `/pipelines/monthly`) +
       `/workflows/trigger` fix (all 3 cadences delegate to their pipeline).
 - [ ] Task 5: Integration/API test sweep + success-criteria verification.
 - [ ] Task 6: Documentation reconciliation.
