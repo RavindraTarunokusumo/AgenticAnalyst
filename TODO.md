@@ -12,12 +12,17 @@ Spec: `docs/superpowers/specs/2026-07-15-ui-brief-viewer-design.md`
 Plan: `docs/superpowers/plans/2026-07-15-ui-brief-viewer.md`
 
 - [x] `frontend/` scaffold (Vite + React + TS + Tailwind)
-- [ ] API client module (`frontend/src/api.ts`)
+- [x] API client module (`frontend/src/api.ts`)
 - [x] Components: `CadenceTabs`, `BriefList`, `BriefDetail`, loading/empty/error states
 - [x] App shell / state (`frontend/src/App.tsx`)
-- [ ] Backend static mount (`api/app.py`)
+- [x] Backend static mount (`api/app.py`) + local-dev fallback placeholder
+      (`api/static/index.html` + gitignore `frontend/dist/`) - landed as one
+      commit: `StaticFiles(directory=...)` raises at construction time if the
+      directory doesn't exist, so the mount and the placeholder file are
+      technically coupled and cannot be split into independently-working
+      commits (plan listed them as separate line items; consolidated here,
+      logged per Workflow Rule 2).
 - [ ] `Dockerfile` multi-stage build (Node build stage + COPY into runtime stage)
-- [ ] Local-dev fallback placeholder (`api/static/index.html` + gitignore `frontend/dist/`)
 - [ ] CI: extend to build/lint frontend, or explicitly document the gap
 - [ ] Tests: backend mount smoke test, existing `GET /briefs` tests untouched
 - [ ] Docs: `docs/architecture.md`, `docs/commands.md`, `docs/changelog.md`

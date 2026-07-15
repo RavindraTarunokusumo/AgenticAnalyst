@@ -56,6 +56,12 @@ test-results/
 postgres-data/
 pgdata/
 
+# Frontend build output (Dockerfile's frontend-build stage regenerates it;
+# local backend-only work relies on the committed static/index.html
+# placeholder instead - see docs/commands.md)
+frontend/node_modules/
+frontend/dist/
+
 # Editor and OS
 .idea/
 .vscode/
