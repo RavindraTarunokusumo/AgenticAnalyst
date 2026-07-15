@@ -103,7 +103,19 @@ def test_container_image_installs_playwright_chromium_for_future_ingestion() -> 
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     project = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert dockerfile.startswith("FROM python:3.12.13-slim-bookworm AS runtime")
+    assert "FROM python:3.12.13-slim-bookworm AS runtime" in dockerfile
     assert "uv run playwright install --with-deps chromium" in dockerfile
     assert '"crawl4ai>=0.7"' in project
     assert '"playwright>=1.52"' in project
+
+
+def test_container_image_builds_the_frontend_in_a_node_stage() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    assert dockerfile.startswith("FROM node:22-slim AS frontend-build")
+    assert "npm ci" in dockerfile
+    assert "npm run build" in dockerfile
+    assert (
+        "COPY --from=frontend-build /app/frontend/dist ./src/analyst_engine/api/static"
+        in dockerfile
+    )
