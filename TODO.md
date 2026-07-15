@@ -23,7 +23,7 @@ Plan: `docs/superpowers/plans/2026-07-15-ui-brief-viewer.md`
       commits (plan listed them as separate line items; consolidated here,
       logged per Workflow Rule 2).
 - [x] `Dockerfile` multi-stage build (Node build stage + COPY into runtime stage)
-- [ ] CI: extend to build/lint frontend, or explicitly document the gap
+- [x] CI: extend to build/lint frontend, or explicitly document the gap
 - [ ] Tests: backend mount smoke test, existing `GET /briefs` tests untouched
 - [ ] Docs: `docs/architecture.md`, `docs/commands.md`, `docs/changelog.md`
 
