@@ -31,10 +31,12 @@ from analyst_engine.persistence.repositories import (
     upsert_source,
     upsert_source_feed,
 )
+from analyst_engine.pipeline.periodic_brief import PeriodicPipelineResult
 from analyst_engine.runtime import (
     RuntimeDependencies,
     build_daily_brief_pipeline,
     build_ingestion_service,
+    build_periodic_brief_pipeline,
     create_runtime,
 )
 from analyst_engine.workflows.runner import WorkflowRunner
@@ -136,6 +138,21 @@ class DailyPipelineResultResponse(BaseModel):
     brief_id: UUID | None
 
 
+class TriggerPeriodicPipelineRequest(BaseModel):
+    target_date: date
+
+
+class PeriodicPipelineResultResponse(BaseModel):
+    cadence: str
+    covered_start: date
+    covered_end: date
+    summaries_selected: int
+    is_no_content: bool
+    workflow_run_id: UUID | None
+    workflow_status: str | None
+    brief_id: UUID | None
+
+
 class ResolvedCitationResponse(BaseModel):
     article_id: UUID
     excerpt: str | None
@@ -202,6 +219,19 @@ def _source_to_response(source: Source, feeds: list[SourceFeed]) -> SourceRespon
     )
 
 
+def _periodic_result_to_response(result: PeriodicPipelineResult) -> PeriodicPipelineResultResponse:
+    return PeriodicPipelineResultResponse(
+        cadence=result.cadence.value,
+        covered_start=result.covered_start,
+        covered_end=result.covered_end,
+        summaries_selected=result.summaries_selected,
+        is_no_content=result.is_no_content,
+        workflow_run_id=result.workflow_run_id,
+        workflow_status=result.workflow_status.value if result.workflow_status else None,
+        brief_id=result.brief_id,
+    )
+
+
 def create_app(
     *,
     settings_factory: Callable[[], Settings] = get_settings,
@@ -224,11 +254,19 @@ def create_app(
                 ingestion_service=ingestion_service,
                 runner=runner,
             )
+            weekly_pipeline = build_periodic_brief_pipeline(
+                runtime, runner=runner, cadence=Cadence.WEEKLY
+            )
+            monthly_pipeline = build_periodic_brief_pipeline(
+                runtime, runner=runner, cadence=Cadence.MONTHLY
+            )
             app.state.runtime = runtime
             app.state.engine = runtime.engine
             app.state.runner = runner
             app.state.ingestion_service = ingestion_service
             app.state.pipeline = pipeline
+            app.state.weekly_pipeline = weekly_pipeline
+            app.state.monthly_pipeline = monthly_pipeline
             yield
         finally:
             await runtime.close()
@@ -260,19 +298,42 @@ def create_app(
         req: TriggerRequest,
         _key: str = Depends(_require_key),
     ) -> TriggerResponse:
-        runner: WorkflowRunner = app.state.runner
+        run_id: UUID | None
+        status: str | None
+        covered_start: date
+        covered_end: date
         if req.cadence == "daily":
-            run = await runner.run_daily(req.covered_start)
+            daily_result = await app.state.pipeline.run(req.covered_start)
+            run_id = daily_result.workflow_run_id
+            status = daily_result.workflow_status.value if daily_result.workflow_status else None
+            covered_start = covered_end = daily_result.target_date
         elif req.cadence == "weekly":
-            run = await runner.run_weekly(req.covered_start)
+            weekly_result = await app.state.weekly_pipeline.run(req.covered_start)
+            run_id = weekly_result.workflow_run_id
+            status = weekly_result.workflow_status.value if weekly_result.workflow_status else None
+            covered_start = weekly_result.covered_start
+            covered_end = weekly_result.covered_end
         elif req.cadence == "monthly":
-            run = await runner.run_monthly(req.covered_start)
+            monthly_result = await app.state.monthly_pipeline.run(req.covered_start)
+            run_id = monthly_result.workflow_run_id
+            status = (
+                monthly_result.workflow_status.value if monthly_result.workflow_status else None
+            )
+            covered_start = monthly_result.covered_start
+            covered_end = monthly_result.covered_end
         else:
             raise HTTPException(status_code=400, detail="unknown cadence")
+        if run_id is None or status is None:
+            raise HTTPException(status_code=409, detail="no content for the requested window")
+        # Mirrors WorkflowRunner._ensure_run's own key derivation - built from
+        # each pipeline's actual, normalized covered_start/covered_end (not
+        # the raw request), since weekly/monthly may not be Monday/month-
+        # aligned as submitted.
+        idempotency_key = f"{req.cadence}:{covered_start.isoformat()}:{covered_end.isoformat()}"
         return TriggerResponse(
-            run_id=str(run.id),
-            status=run.status,
-            idempotency_key=run.idempotency_key,
+            run_id=str(run_id),
+            status=status,
+            idempotency_key=idempotency_key,
         )
 
     @app.post("/sources", response_model=SourceResponse)
@@ -408,6 +469,22 @@ def create_app(
             workflow_status=result.workflow_status.value if result.workflow_status else None,
             brief_id=result.brief_id,
         )
+
+    @app.post("/pipelines/weekly", response_model=PeriodicPipelineResultResponse)
+    async def trigger_weekly_pipeline(
+        req: TriggerPeriodicPipelineRequest,
+        _key: str = Depends(_require_key),
+    ) -> PeriodicPipelineResultResponse:
+        result = await app.state.weekly_pipeline.run(req.target_date)
+        return _periodic_result_to_response(result)
+
+    @app.post("/pipelines/monthly", response_model=PeriodicPipelineResultResponse)
+    async def trigger_monthly_pipeline(
+        req: TriggerPeriodicPipelineRequest,
+        _key: str = Depends(_require_key),
+    ) -> PeriodicPipelineResultResponse:
+        result = await app.state.monthly_pipeline.run(req.target_date)
+        return _periodic_result_to_response(result)
 
     @app.get("/briefs", response_model=list[BriefListItemResponse])
     async def list_briefs(cadence: str = "daily") -> list[BriefListItemResponse]:

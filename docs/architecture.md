@@ -34,7 +34,7 @@ Summarization / Pipeline below).
 ### Core / Infrastructure
 
 - `config.py`: typed Settings (pydantic-settings) for direct application runtime configuration. MODEL_PROVIDER and OpenRouter settings (plus others like DATABASE_URL, APP_PROCESS_MODE, LangSmith flags) are read from process environment or .env; Compose currently forwards only a subset (APP_PROCESS_MODE, DASHSCOPE_*, DATABASE_URL, LANGSMITH_* etc.) and does not declare MODEL_PROVIDER or OPENROUTER_* .
-- `runtime.py`: constructs the shared `RuntimeDependencies` bundle (engine, async session factory, ModelGateway, checkpointer factory, `httpx.AsyncClient`) from Settings; owns resource cleanup on close. `build_ingestion_service`/`build_daily_brief_pipeline` construct those services identically for API and scheduler, mirroring the pattern already used for `WorkflowRunner`.
+- `runtime.py`: constructs the shared `RuntimeDependencies` bundle (engine, async session factory, ModelGateway, checkpointer factory, `httpx.AsyncClient`) from Settings; owns resource cleanup on close. `build_ingestion_service`/`build_daily_brief_pipeline`/`build_periodic_brief_pipeline` construct those services identically for API and scheduler, mirroring the pattern already used for `WorkflowRunner`. `build_periodic_brief_pipeline` is cadence-parameterized; one instance is constructed per `Cadence.WEEKLY`/`Cadence.MONTHLY`.
 - `persistence/engine.py`: async SQLAlchemy engine + session_scope helper.
 - `persistence/checkpoints.py`: LangGraph AsyncPostgresSaver integration.
 
@@ -55,7 +55,7 @@ Summarization / Pipeline below).
 
 ### Services / Workflows
 
-- `workflows/runner.py`: WorkflowRunner coordinates idempotent run lifecycle (ensure/claim), loads context, compiles and invokes the cadence graph with PostgreSQL checkpointer (using stable run ID for thread), and records succeeded/failed only after graph completion (or on error). Unchanged by the RSS ingestion slice; the pipeline below only calls `run_daily`, it never touches claiming/checkpointing/persistence directly.
+- `workflows/runner.py`: WorkflowRunner coordinates idempotent run lifecycle (ensure/claim), loads context, compiles and invokes the cadence graph with PostgreSQL checkpointer (using stable run ID for thread), and records succeeded/failed only after graph completion (or on error). Unchanged by the RSS ingestion or Weekly/Monthly Brief slices; the pipelines below only call `run_daily`/`run_weekly`/`run_monthly`, never claiming/checkpointing/persistence directly. `run_weekly`/`run_monthly` only normalize their window when `target_date` is omitted - callers that pass an explicit anchor must pre-normalize it (see `pipeline/periodic_brief.py`), since an unaligned date would silently create a misaligned/overlapping idempotency key.
 - `workflows/graphs.py`: cadence-specific graph builders wired to the ModelGateway.
 - `workflows/state.py`: workflow state contracts.
 
@@ -69,20 +69,22 @@ Summarization / Pipeline below).
 - `ingestion/service.py`: `IngestionService` - `poll_feed`/`ingest_urls` share one `_ingest_candidate` path (canonicalize, dedup check before extraction, extraction with fallback, article-shape validation, race-safe persist with fingerprint-uniqueness reload-and-mark-duplicate).
 - `batching/batcher.py`: `batch_articles` - pure, deterministic: language partition, ordering, greedy seed-based title-token Jaccard grouping (3-5), carry-forward under 3, SHA-256 `batch_key`.
 - `summarization/prompts.py` / `summarizer.py`: batch-summary prompt construction (delimited article blocks, explicit anti-prompt-injection system message) and `summarize_batch` (calls `ModelGateway` with `ModelTask.BATCH_SUMMARY`, validates citation article-ID membership and excerpt provenance before persistence).
-- `pipeline/daily_brief.py`: `DailyBriefPipeline.run(target_date)` - the sole entry point for both the scheduler's daily job and `POST /pipelines/daily`. Polls due feeds, selects eligible unbatched articles, forms/reuses batches, creates/reuses summaries, selects summaries eligible for the target date that no *other* date's daily brief has already cited, then calls the unmodified `WorkflowRunner.run_daily`.
+- `pipeline/daily_brief.py`: `DailyBriefPipeline.run(target_date)` - the sole entry point for the scheduler's daily job, `POST /pipelines/daily`, and `POST /workflows/trigger`'s daily branch. Polls due feeds, selects eligible unbatched articles, forms/reuses batches, creates/reuses summaries, selects summaries eligible for the target date that no *other* date's daily brief has already cited, then calls the unmodified `WorkflowRunner.run_daily`.
+- `pipeline/periodic_brief.py`: `PeriodicBriefPipeline` - the sole entry point for the scheduler's weekly/monthly jobs, `POST /pipelines/weekly`/`monthly`, and `POST /workflows/trigger`'s weekly/monthly branches. One cadence-parameterized class (`Cadence.WEEKLY` or `Cadence.MONTHLY`, two runtime instances). Normalizes an optional anchor date to the canonical Monday-Sunday week or calendar month using the exact formula `WorkflowRunner.run_weekly`/`run_monthly` use for their own default case, selects already-persisted `BatchSummary` rows whose batch has an article published in that window (`list_eligible_batch_summaries_for_window`) excluding any already cited for *this same cadence* and window (a summary already cited by a Daily brief remains independently eligible for its Weekly brief - citation tracking is per-cadence), then calls the unmodified `WorkflowRunner.run_weekly`/`run_monthly` with the computed window. Unlike Daily, it never ingests, batches, or summarizes - it only selects from evidence Daily has already produced.
 
 ### API / Delivery
 
-- `api/app.py`: FastAPI application factory with lifespan that materializes runtime + runner + `IngestionService` + `DailyBriefPipeline` (via `runtime.build_ingestion_service`/`build_daily_brief_pipeline`, used identically by the scheduler) into app.state. Exposes:
+- `api/app.py`: FastAPI application factory with lifespan that materializes runtime + runner + `IngestionService` + `DailyBriefPipeline` + `PeriodicBriefPipeline` (weekly, monthly) (via `runtime.build_ingestion_service`/`build_daily_brief_pipeline`/`build_periodic_brief_pipeline`, used identically by the scheduler) into app.state. Exposes:
   - `GET /healthz`: process liveness.
   - `GET /readyz`: database connectivity + current vs expected Alembic revision (503 when not ready).
-  - `POST /workflows/trigger`: request schema accepts cadence, covered_start, covered_end; current execution derives effective covered_end from cadence + covered_start and does not use the supplied covered_end; returns durable run (id, status, idempotency_key) using the runner.
+  - `POST /workflows/trigger`: request schema accepts cadence, covered_start, covered_end. All three cadence branches delegate to their pipeline (`app.state.pipeline`/`weekly_pipeline`/`monthly_pipeline`, each `.run(req.covered_start)`) rather than calling `WorkflowRunner` directly, so a manual trigger always selects real persisted evidence instead of running the graph with an empty context. The returned `idempotency_key` reflects the pipeline's own normalized `covered_start`/`covered_end` (Monday-aligned for weekly, month-aligned for monthly), not the raw request value. Returns 409 if the pipeline reports no eligible content for the window (no `WorkflowRun` was created).
   - `POST /sources` / `GET /sources`: idempotent source + feed registration (canonicalizes every feed URL via `canonicalize_url`); feed health listing.
   - `POST /ingestion/urls`: manual URL ingestion through `IngestionService.ingest_urls`.
   - `GET /ingestion/attempts`: recent attempts, optional status filter.
   - `POST /pipelines/daily`: triggers `DailyBriefPipeline.run` for a target date.
-  - `GET /briefs`: lists recent briefs by cadence. `GET /briefs/{brief_id}`: full brief with every citation resolved to article title/URL/source name.
-  - Write/trigger routes (`/workflows/trigger`, `POST /sources`, `POST /ingestion/urls`, `POST /pipelines/daily`) require an `X-API-Key` header unless `settings.allow_unauthenticated_write` is explicitly true (local development only); read routes stay open.
+  - `POST /pipelines/weekly` / `POST /pipelines/monthly`: triggers `PeriodicBriefPipeline.run` for an anchor date (normalized to that week's Monday / that month's 1st); response mirrors the daily route's shape but scoped to `PeriodicPipelineResult`'s fields (no ingestion/batching counts, since this pipeline only selects and re-synthesizes).
+  - `GET /briefs`: lists recent briefs by cadence (daily/weekly/monthly, unchanged - already cadence-generic). `GET /briefs/{brief_id}`: full brief with every citation resolved to article title/URL/source name.
+  - Write/trigger routes (`/workflows/trigger`, `POST /sources`, `POST /ingestion/urls`, `POST /pipelines/daily`, `POST /pipelines/weekly`, `POST /pipelines/monthly`) require an `X-API-Key` header unless `settings.allow_unauthenticated_write` is explicitly true (local development only); read routes stay open.
 - `api/readiness.py`: `check_readiness` implementation and a CLI entrypoint (`python -m analyst_engine.api.readiness`) used by scheduler container healthcheck.
 
 ### Integrations
@@ -111,15 +113,21 @@ Startup and operation:
 ## Background Jobs
 
 Scheduler mode (APP_PROCESS_MODE=scheduler) runs APScheduler (AsyncIOScheduler)
-and registers daily, weekly, and monthly cadence jobs. The daily job invokes
-`DailyBriefPipeline.run(date.today())` (polls feeds, batches, summarizes, then
-calls the runner) rather than `WorkflowRunner.run_daily` directly; weekly and
-monthly remain bound to the runner, unchanged and outside this slice's scope.
-Jobs are idempotent via the WorkflowRunner: duplicate triggers for the same
-interval return the existing terminal or running run without creating a second
-row. The runner drives checkpointed graph execution using the workflow run ID
-as the stable correlation and checkpoint thread identifier. Success is
-recorded only after graph invocation completes.
+and registers daily, weekly, and monthly cadence jobs. All three jobs call
+their pipeline's `.run()` rather than `WorkflowRunner.run_daily`/`run_weekly`/
+`run_monthly` directly: the daily job invokes `DailyBriefPipeline.run(date.
+today())` (polls feeds, batches, summarizes, then calls the runner); the
+weekly job (Sunday 03:00) invokes `weekly_pipeline.run()` and the monthly job
+(1st at 04:00) invokes `monthly_pipeline.run()` (each selects already-
+persisted `BatchSummary` evidence for the current week/month, then calls the
+runner) - the same rebinding pattern established for daily. Cron schedules are
+unchanged; Sunday 03:00 already runs after that day's 02:00 daily job, so a
+normal week's Sunday batch summaries are expected to exist by the time the
+weekly job runs. Jobs are idempotent via the WorkflowRunner: duplicate
+triggers for the same interval return the existing terminal or running run
+without creating a second row. The runner drives checkpointed graph execution
+using the workflow run ID as the stable correlation and checkpoint thread
+identifier. Success is recorded only after graph invocation completes.
 
 ## External Integrations
 

@@ -12,6 +12,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from analyst_engine.config import Settings
+from analyst_engine.domain.models import Cadence
 from analyst_engine.ingestion.extractor import Crawl4AIExtractor, PrimaryHttpExtractor
 from analyst_engine.ingestion.feed_client import FeedClient
 from analyst_engine.ingestion.service import IngestionService
@@ -20,6 +21,7 @@ from analyst_engine.models.gateway import ModelGateway
 from analyst_engine.persistence.checkpoints import get_async_checkpointer
 from analyst_engine.persistence.engine import get_async_engine, get_session_factory
 from analyst_engine.pipeline.daily_brief import DailyBriefPipeline
+from analyst_engine.pipeline.periodic_brief import PeriodicBriefPipeline
 from analyst_engine.workflows.runner import WorkflowRunner
 
 CheckpointerFactory = Callable[[], AbstractAsyncContextManager[AsyncPostgresSaver]]
@@ -90,6 +92,20 @@ def build_daily_brief_pipeline(
         runner=runner,
         gateway=runtime.gateway,
         settings=runtime.settings,
+    )
+
+
+def build_periodic_brief_pipeline(
+    runtime: RuntimeDependencies,
+    *,
+    runner: WorkflowRunner,
+    cadence: Cadence,
+) -> PeriodicBriefPipeline:
+    """Construct a PeriodicBriefPipeline shared by API and scheduler processes."""
+    return PeriodicBriefPipeline(
+        cadence=cadence,
+        session_factory=runtime.session_factory,
+        runner=runner,
     )
 
 

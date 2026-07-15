@@ -19,13 +19,21 @@ start at Workflow step 1 (dedicated worktree/branch, e.g.
 - [x] Produce the lightweight implementation plan (6 tasks: repository query,
       `PeriodicBriefPipeline`, runtime/scheduler wiring, API routes +
       `/workflows/trigger` fix, test sweep, docs reconciliation).
-- [ ] Task 1: `list_eligible_batch_summaries_for_window` repository function.
-- [ ] Task 2: `PeriodicBriefPipeline` + `PeriodicPipelineResult`.
-- [ ] Task 3: Runtime wiring + scheduler rebinding.
-- [ ] Task 4: API routes (`/pipelines/weekly`, `/pipelines/monthly`) +
+- [x] Task 1: `list_eligible_batch_summaries_for_window` repository function.
+- [x] Task 2: `PeriodicBriefPipeline` + `PeriodicPipelineResult`.
+- [x] Task 3: Runtime wiring + scheduler rebinding. Extension beyond the plan
+      text: `register_schedules` also drops its now-fully-unused `runner`
+      parameter (weekly/monthly jobs call their pipeline, not the runner,
+      after this task) rather than leaving a dead parameter; call sites in
+      `main.py` and the two affected unit test files were updated to match.
+- [x] Task 4: API routes (`/pipelines/weekly`, `/pipelines/monthly`) +
       `/workflows/trigger` fix (all 3 cadences delegate to their pipeline).
-- [ ] Task 5: Integration/API test sweep + success-criteria verification.
-- [ ] Task 6: Documentation reconciliation.
+- [x] Task 5: Integration/API test sweep + success-criteria verification.
+      PostgreSQL integration tests are added but could not be run locally
+      (Docker unavailable in this dev environment, per docs/insights.md's
+      2026-07-14 note) - CI is the first real run of these; watch its result
+      before considering this task's coverage claim fully verified.
+- [x] Task 6: Documentation reconciliation.
 
 ## Session: <Session Name> (<YYYY-MM-DD>)
 

@@ -67,13 +67,15 @@ async def test_scheduler_mode_registers_once_and_closes_runtime() -> None:
     register.assert_awaited_once()
     await_args = register.await_args
     assert await_args is not None
-    registered_scheduler, runner, pipeline, registered_settings = await_args.args
+    registered_scheduler, pipeline, weekly_pipeline, monthly_pipeline, registered_settings = (
+        await_args.args
+    )
     assert registered_scheduler is scheduler
     assert registered_settings is settings
     assert pipeline is not None
-    assert runner.gateway is runtime.gateway
-    assert runner.session_factory is runtime.session_factory
-    assert runner.checkpointer_factory is runtime.checkpointer_factory
+    assert weekly_pipeline is not None
+    assert monthly_pipeline is not None
+    assert len({id(pipeline), id(weekly_pipeline), id(monthly_pipeline)}) == 3
     scheduler.start.assert_called_once_with()
     scheduler.shutdown.assert_called_once_with()
     runtime.close.assert_awaited_once()
