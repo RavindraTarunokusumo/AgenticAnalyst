@@ -1,0 +1,5 @@
+Task: Tests (backend mount smoke test + existing GET /briefs tests untouched)
+Summary: Added tests/api/test_ui_mount.py (GET /ui/ -> 200 text/html; mount does not shadow GET /healthz). Updated tests/test_compose_structure.py's Dockerfile assertion from startswith(...) to an 'in' check plus a new test for the frontend-build stage shape, since the multi-stage Dockerfile change legitimately moved the Python FROM line off line 1 (not a pre-existing/unrelated failure - fixed per Workflow Rule 6's carve-out only applying to untouched files).
+Docs: N/A (docs land in a later commit)
+TODO: TODO.md Session: UI / Brief Viewer (2026-07-15) - Tests item
+Validation: uv run pytest tests/api/test_ui_mount.py tests/test_compose_structure.py -q (13 passed); ruff format --check / ruff check on both files
