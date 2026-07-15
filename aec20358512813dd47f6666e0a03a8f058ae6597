@@ -1,0 +1,5 @@
+Task: frontend/ scaffold (Vite + React + TS + Tailwind)
+Summary: Scaffolded frontend/ via npm create vite (react-ts template), added Tailwind v4 via @tailwindcss/vite plugin, set vite base to /ui/ for the future backend static mount, removed template cruft (logos, hero image, icons svg, generic README).
+Docs: N/A (docs land in a later commit)
+TODO: TODO.md Session: UI / Brief Viewer (2026-07-15) - frontend/ scaffold item
+Validation: npm run build, npm run lint (both clean)
