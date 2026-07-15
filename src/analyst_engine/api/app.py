@@ -5,11 +5,13 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.responses import JSONResponse
 from fastapi.security.api_key import APIKeyHeader
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -43,6 +45,11 @@ from analyst_engine.workflows.runner import WorkflowRunner
 
 # Very simple harness auth (token from env or header for local dev)
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+# Built frontend assets (frontend/dist, copied here by the Dockerfile's
+# frontend-build stage) or the committed placeholder for a fresh checkout
+# with no frontend build yet run - see docs/commands.md.
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 class TriggerRequest(BaseModel):
@@ -584,5 +591,7 @@ def create_app(
             created_at=brief.created_at,
             cited_summaries=cited_summaries,
         )
+
+    app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
 
     return app

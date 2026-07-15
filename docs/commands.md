@@ -160,6 +160,41 @@ Remove-Item Env:APP_PROCESS_MODE
 The application image installs Playwright Chromium during its build so future
 Crawl4AI ingestion can use the same image without a browser-install step.
 
+## Frontend (Brief Viewer)
+
+Prerequisites: Node version pinned in `frontend/.nvmrc`.
+
+Install dependencies:
+
+```bash
+cd frontend && npm ci
+```
+
+Local dev server (proxies API calls to a separately-running backend):
+
+```bash
+cd frontend && npm run dev
+```
+
+Build the production bundle (outputs to `frontend/dist/`, gitignored):
+
+```bash
+cd frontend && npm run build
+```
+
+Lint:
+
+```bash
+cd frontend && npm run lint
+```
+
+`npm run build` also runs `tsc -b` as a type-check gate. A fresh checkout with
+no frontend build yet run still serves a placeholder at `/ui/`
+(`src/analyst_engine/api/static/index.html`, committed) rather than 404ing;
+run `npm run build` to replace it with the real SPA. Docker images always
+build the real frontend via the `frontend-build` stage - the placeholder only
+matters for direct (non-Docker) local backend runs.
+
 ## Database
 
 The Compose stack starts PostgreSQL 16 with pgvector. Migrations are managed by

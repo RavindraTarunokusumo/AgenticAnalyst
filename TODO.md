@@ -6,6 +6,32 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
+## Session: UI / Brief Viewer (2026-07-15)
+
+Spec: `docs/superpowers/specs/2026-07-15-ui-brief-viewer-design.md`
+Plan: `docs/superpowers/plans/2026-07-15-ui-brief-viewer.md`
+
+- [x] `frontend/` scaffold (Vite + React + TS + Tailwind)
+- [x] API client module (`frontend/src/api.ts`)
+- [x] Components: `CadenceTabs`, `BriefList`, `BriefDetail`, loading/empty/error states
+- [x] App shell / state (`frontend/src/App.tsx`)
+- [x] Backend static mount (`api/app.py`) + local-dev fallback placeholder
+      (`api/static/index.html` + gitignore `frontend/dist/`) - landed as one
+      commit: `StaticFiles(directory=...)` raises at construction time if the
+      directory doesn't exist, so the mount and the placeholder file are
+      technically coupled and cannot be split into independently-working
+      commits (plan listed them as separate line items; consolidated here,
+      logged per Workflow Rule 2).
+- [x] `Dockerfile` multi-stage build (Node build stage + COPY into runtime stage)
+- [x] CI: extend to build/lint frontend, or explicitly document the gap
+- [x] Tests: backend mount smoke test, existing `GET /briefs` tests untouched
+      (also updated `test_container_image_installs_playwright_chromium_for_
+      future_ingestion`'s `dockerfile.startswith(...)` assertion, which the
+      new Node frontend-build stage legitimately broke since it is no longer
+      the first line of the Dockerfile - not a pre-existing/unrelated
+      failure, logged per Workflow Rule 2)
+- [x] Docs: `docs/architecture.md`, `docs/commands.md`, `docs/changelog.md`
+
 ## Future Backlog
 
 Candidate next slices, roughly in suggested priority order. None have a spec
@@ -26,10 +52,6 @@ behind this ordering.
       status later (no confirm/falsify job or route). The falsifiable-
       predictions concept is half-built: expectations are proposed but never
       checked against what actually happened.
-- [ ] **UI / frontend.** The product is API-only end to end (RSS-to-Daily and
-      Weekly/Monthly slices both explicitly scoped UI out). Even a minimal
-      read-only brief viewer would make the existing `GET /briefs` surface
-      usable by a human instead of only `curl`/`gh`.
 - [ ] **claim_event / contradiction graph.** Explicitly deferred since the
       initial migration (`docs/database.md`); no schema, no design started.
       Likely the largest single slice on this list - needs its own spec

@@ -1,3 +1,13 @@
+FROM node:22-slim AS frontend-build
+
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.12.13-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -48,6 +58,7 @@ COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY src ./src
+COPY --from=frontend-build /app/frontend/dist ./src/analyst_engine/api/static
 COPY docker/app-entrypoint.sh /usr/local/bin/analyst-engine-entrypoint
 RUN uv sync --frozen --no-dev \
     && uv run playwright install --with-deps chromium \

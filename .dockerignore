@@ -23,6 +23,7 @@ build
 playwright-report
 test-results
 .playwright
+frontend/node_modules
 
 # Local application and database data.
 postgres-data
