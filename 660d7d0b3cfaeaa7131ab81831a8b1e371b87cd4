@@ -1,0 +1,5 @@
+Task: Archive retrieval implementation plan
+Summary: File structure, build order (1->2,3->4->5->6->7->8->9), per-task interfaces for embed() gateway method, similarity search repo function, synthesize() wiring, and the search route.
+Docs: docs/superpowers/plans/2026-07-15-archive-retrieval.md
+TODO: spec+plan accepted, implementation next
+Validation: N/A (docs-only plan)
