@@ -12,13 +12,14 @@ from apscheduler.triggers.cron import CronTrigger
 
 from analyst_engine.config import ProcessMode, Settings
 from analyst_engine.pipeline.daily_brief import DailyBriefPipeline
-from analyst_engine.workflows.runner import WorkflowRunner  # defined later in Task 5/6
+from analyst_engine.pipeline.periodic_brief import PeriodicBriefPipeline
 
 
 async def register_schedules(
     scheduler: AsyncIOScheduler,
-    runner: WorkflowRunner,
     pipeline: DailyBriefPipeline,
+    weekly_pipeline: PeriodicBriefPipeline,
+    monthly_pipeline: PeriodicBriefPipeline,
     settings: Settings,
 ) -> None:
     """Register daily, weekly, monthly jobs (idempotent by key)."""
@@ -27,6 +28,12 @@ async def register_schedules(
 
     async def _run_daily_pipeline() -> None:
         await pipeline.run(date.today())
+
+    async def _run_weekly_pipeline() -> None:
+        await weekly_pipeline.run()
+
+    async def _run_monthly_pipeline() -> None:
+        await monthly_pipeline.run()
 
     # Daily at 02:00 local
     scheduler.add_job(
@@ -39,7 +46,7 @@ async def register_schedules(
 
     # Weekly on Sunday 03:00
     scheduler.add_job(
-        runner.run_weekly,
+        _run_weekly_pipeline,
         CronTrigger(day_of_week="sun", hour=3, minute=0),
         id="weekly-brief",
         replace_existing=True,
@@ -47,7 +54,7 @@ async def register_schedules(
 
     # Monthly on 1st at 04:00
     scheduler.add_job(
-        runner.run_monthly,
+        _run_monthly_pipeline,
         CronTrigger(day=1, hour=4, minute=0),
         id="monthly-brief",
         replace_existing=True,

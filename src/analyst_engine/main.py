@@ -8,11 +8,14 @@ import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from analyst_engine.config import ProcessMode, Settings
+from analyst_engine.domain.models import Cadence
 from analyst_engine.pipeline.daily_brief import DailyBriefPipeline
+from analyst_engine.pipeline.periodic_brief import PeriodicBriefPipeline
 from analyst_engine.runtime import (
     RuntimeDependencies,
     build_daily_brief_pipeline,
     build_ingestion_service,
+    build_periodic_brief_pipeline,
     create_runtime,
 )
 from analyst_engine.scheduling import register_schedules
@@ -39,7 +42,14 @@ async def run_scheduler(
     runtime_factory: Callable[[Settings], Awaitable[RuntimeDependencies]] = create_runtime,
     scheduler_factory: Callable[[], AsyncIOScheduler] = AsyncIOScheduler,
     schedule_registrar: Callable[
-        [AsyncIOScheduler, WorkflowRunner, DailyBriefPipeline, Settings], Awaitable[None]
+        [
+            AsyncIOScheduler,
+            DailyBriefPipeline,
+            PeriodicBriefPipeline,
+            PeriodicBriefPipeline,
+            Settings,
+        ],
+        Awaitable[None],
     ] = register_schedules,
     wait_forever: Callable[[], Awaitable[None]] = _wait_forever,
 ) -> None:
@@ -60,8 +70,14 @@ async def run_scheduler(
             ingestion_service=ingestion_service,
             runner=runner,
         )
+        weekly_pipeline = build_periodic_brief_pipeline(
+            runtime, runner=runner, cadence=Cadence.WEEKLY
+        )
+        monthly_pipeline = build_periodic_brief_pipeline(
+            runtime, runner=runner, cadence=Cadence.MONTHLY
+        )
         scheduler = scheduler_factory()
-        await schedule_registrar(scheduler, runner, pipeline, settings)
+        await schedule_registrar(scheduler, pipeline, weekly_pipeline, monthly_pipeline, settings)
         scheduler.start()
         started = True
         await wait_forever()

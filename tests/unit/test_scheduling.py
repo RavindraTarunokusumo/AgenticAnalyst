@@ -19,10 +19,13 @@ def _settings(mode: ProcessMode) -> Settings:
 @pytest.mark.asyncio
 async def test_register_schedules_skips_registration_in_non_scheduler_mode() -> None:
     scheduler = Mock()
-    runner = Mock()
     pipeline = Mock()
+    weekly_pipeline = Mock()
+    monthly_pipeline = Mock()
 
-    await register_schedules(scheduler, runner, pipeline, _settings(ProcessMode.API))
+    await register_schedules(
+        scheduler, pipeline, weekly_pipeline, monthly_pipeline, _settings(ProcessMode.API)
+    )
 
     scheduler.add_job.assert_not_called()
 
@@ -41,13 +44,16 @@ async def test_register_schedules_daily_job_invokes_pipeline_run_with_today(
     monkeypatch.setattr("analyst_engine.scheduling.date", _FixedDate)
 
     scheduler = Mock()
-    runner = Mock()
-    runner.run_weekly = Mock()
-    runner.run_monthly = Mock()
     pipeline = Mock()
     pipeline.run = AsyncMock()
+    weekly_pipeline = Mock()
+    weekly_pipeline.run = AsyncMock()
+    monthly_pipeline = Mock()
+    monthly_pipeline.run = AsyncMock()
 
-    await register_schedules(scheduler, runner, pipeline, _settings(ProcessMode.SCHEDULER))
+    await register_schedules(
+        scheduler, pipeline, weekly_pipeline, monthly_pipeline, _settings(ProcessMode.SCHEDULER)
+    )
 
     assert scheduler.add_job.call_count == 3
     daily_call = scheduler.add_job.call_args_list[0]
@@ -60,19 +66,27 @@ async def test_register_schedules_daily_job_invokes_pipeline_run_with_today(
 
 
 @pytest.mark.asyncio
-async def test_register_schedules_weekly_and_monthly_jobs_use_runner() -> None:
+async def test_register_schedules_weekly_and_monthly_jobs_use_their_pipelines() -> None:
     scheduler = Mock()
-    runner = Mock()
-    runner.run_weekly = Mock()
-    runner.run_monthly = Mock()
     pipeline = Mock()
+    weekly_pipeline = Mock()
+    weekly_pipeline.run = AsyncMock()
+    monthly_pipeline = Mock()
+    monthly_pipeline.run = AsyncMock()
 
-    await register_schedules(scheduler, runner, pipeline, _settings(ProcessMode.SCHEDULER))
+    await register_schedules(
+        scheduler, pipeline, weekly_pipeline, monthly_pipeline, _settings(ProcessMode.SCHEDULER)
+    )
 
     weekly_call = scheduler.add_job.call_args_list[1]
     monthly_call = scheduler.add_job.call_args_list[2]
-
-    assert weekly_call.args[0] is runner.run_weekly
     assert weekly_call.kwargs["id"] == "weekly-brief"
-    assert monthly_call.args[0] is runner.run_monthly
     assert monthly_call.kwargs["id"] == "monthly-brief"
+
+    weekly_job_fn = weekly_call.args[0]
+    await weekly_job_fn()
+    weekly_pipeline.run.assert_awaited_once_with()
+
+    monthly_job_fn = monthly_call.args[0]
+    await monthly_job_fn()
+    monthly_pipeline.run.assert_awaited_once_with()

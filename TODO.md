@@ -21,7 +21,11 @@ start at Workflow step 1 (dedicated worktree/branch, e.g.
       `/workflows/trigger` fix, test sweep, docs reconciliation).
 - [x] Task 1: `list_eligible_batch_summaries_for_window` repository function.
 - [x] Task 2: `PeriodicBriefPipeline` + `PeriodicPipelineResult`.
-- [ ] Task 3: Runtime wiring + scheduler rebinding.
+- [x] Task 3: Runtime wiring + scheduler rebinding. Extension beyond the plan
+      text: `register_schedules` also drops its now-fully-unused `runner`
+      parameter (weekly/monthly jobs call their pipeline, not the runner,
+      after this task) rather than leaving a dead parameter; call sites in
+      `main.py` and the two affected unit test files were updated to match.
 - [ ] Task 4: API routes (`/pipelines/weekly`, `/pipelines/monthly`) +
       `/workflows/trigger` fix (all 3 cadences delegate to their pipeline).
 - [ ] Task 5: Integration/API test sweep + success-criteria verification.
