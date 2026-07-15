@@ -30,7 +30,7 @@ Plan: `docs/superpowers/plans/2026-07-15-ui-brief-viewer.md`
       new Node frontend-build stage legitimately broke since it is no longer
       the first line of the Dockerfile - not a pre-existing/unrelated
       failure, logged per Workflow Rule 2)
-- [ ] Docs: `docs/architecture.md`, `docs/commands.md`, `docs/changelog.md`
+- [x] Docs: `docs/architecture.md`, `docs/commands.md`, `docs/changelog.md`
 
 ## Future Backlog
 
