@@ -7,4 +7,13 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   base: '/ui/',
   plugins: [react(), tailwindcss()],
+  server: {
+    // api.ts fetches root-relative paths (/briefs, /briefs/{id}), so `npm
+    // run dev` needs these proxied to a separately-running backend
+    // (default docker compose port) or every fetch 404s against the Vite
+    // dev server's own origin.
+    proxy: {
+      '/briefs': 'http://localhost:8000',
+    },
+  },
 })

@@ -3,6 +3,15 @@ import { EmptyState } from './EmptyState'
 import { ErrorState } from './ErrorState'
 import { LoadingState } from './LoadingState'
 
+// Article URLs are canonicalized to http(s) at ingestion time
+// (ingestion/canonicalize.py rejects any other scheme before an Article is
+// ever persisted), but this guard is cheap defense-in-depth against an
+// href-based scheme injection (e.g. `javascript:`) should that invariant
+// ever be bypassed by a future write path.
+function isSafeHttpUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url)
+}
+
 interface BriefDetailProps {
   brief: BriefDetailData | null
   loading: boolean
@@ -68,7 +77,7 @@ export function BriefDetail({ brief, loading, error }: BriefDetailProps) {
                 <ul className="space-y-1">
                   {summary.citations.map((citation) => (
                     <li key={citation.article_id} className="text-sm">
-                      {citation.article_url !== '' ? (
+                      {isSafeHttpUrl(citation.article_url) ? (
                         <a
                           href={citation.article_url}
                           target="_blank"
