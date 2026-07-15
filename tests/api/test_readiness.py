@@ -176,7 +176,7 @@ def test_trigger_weekly_delegates_to_weekly_pipeline_with_normalized_window(monk
     weekly_pipeline.run.assert_awaited_once_with(date(2026, 7, 8))
 
 
-def test_trigger_returns_409_when_pipeline_reports_no_content(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_trigger_returns_409_when_monthly_pipeline_reports_no_content(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     result = PeriodicPipelineResult(
         cadence=Cadence.MONTHLY,
         covered_start=date(2026, 7, 1),
@@ -198,6 +198,41 @@ def test_trigger_returns_409_when_pipeline_reports_no_content(monkeypatch) -> No
             "cadence": "monthly",
             "covered_start": "2026-07-15",
             "covered_end": "2026-07-15",
+        },
+    )
+
+    assert response.status_code == 409
+
+
+def test_trigger_returns_409_when_daily_pipeline_reports_no_content(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Regression coverage for the daily bypass fix: daily must go through the
+    same 409-on-no-content contract as weekly/monthly now that /workflows/
+    trigger's daily branch calls the pipeline instead of the runner."""
+    result = DailyPipelineResult(
+        target_date=date(2026, 7, 12),
+        feeds_polled=0,
+        articles_succeeded=0,
+        articles_duplicate=0,
+        articles_failed=0,
+        batches_created=0,
+        batches_reused=0,
+        summaries_created=0,
+        summaries_reused=0,
+        summaries_selected=0,
+        is_no_content=True,
+        workflow_run_id=None,
+        workflow_status=None,
+        brief_id=None,
+    )
+    pipeline = Mock(run=AsyncMock(return_value=result))
+    client = make_client(monkeypatch, allow_unauthenticated_write=True, pipeline=pipeline)
+
+    response = client.post(
+        "/workflows/trigger",
+        json={
+            "cadence": "daily",
+            "covered_start": "2026-07-12",
+            "covered_end": "2026-07-12",
         },
     )
 

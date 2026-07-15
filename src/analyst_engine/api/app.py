@@ -305,18 +305,20 @@ def create_app(
         if req.cadence == "daily":
             daily_result = await app.state.pipeline.run(req.covered_start)
             run_id = daily_result.workflow_run_id
-            status = daily_result.workflow_status
+            status = daily_result.workflow_status.value if daily_result.workflow_status else None
             covered_start = covered_end = daily_result.target_date
         elif req.cadence == "weekly":
             weekly_result = await app.state.weekly_pipeline.run(req.covered_start)
             run_id = weekly_result.workflow_run_id
-            status = weekly_result.workflow_status
+            status = weekly_result.workflow_status.value if weekly_result.workflow_status else None
             covered_start = weekly_result.covered_start
             covered_end = weekly_result.covered_end
         elif req.cadence == "monthly":
             monthly_result = await app.state.monthly_pipeline.run(req.covered_start)
             run_id = monthly_result.workflow_run_id
-            status = monthly_result.workflow_status
+            status = (
+                monthly_result.workflow_status.value if monthly_result.workflow_status else None
+            )
             covered_start = monthly_result.covered_start
             covered_end = monthly_result.covered_end
         else:

@@ -66,7 +66,23 @@ async def test_register_schedules_daily_job_invokes_pipeline_run_with_today(
 
 
 @pytest.mark.asyncio
-async def test_register_schedules_weekly_and_monthly_jobs_use_their_pipelines() -> None:
+async def test_register_schedules_weekly_and_monthly_jobs_use_their_pipelines_with_local_today(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Weekly/monthly jobs must pass local date.today() explicitly, the same
+    anchor the daily job uses - CronTrigger fires on local time, but
+    PeriodicBriefPipeline's own default anchor (when none is passed) is a UTC
+    clock, so leaving the anchor implicit here would let a cron job compute
+    the wrong week/month near local midnight in non-UTC deployments."""
+    fixed_today = date(2026, 7, 14)
+
+    class _FixedDate(date):
+        @classmethod
+        def today(cls) -> "_FixedDate":
+            return cls(fixed_today.year, fixed_today.month, fixed_today.day)
+
+    monkeypatch.setattr("analyst_engine.scheduling.date", _FixedDate)
+
     scheduler = Mock()
     pipeline = Mock()
     weekly_pipeline = Mock()
@@ -85,8 +101,8 @@ async def test_register_schedules_weekly_and_monthly_jobs_use_their_pipelines() 
 
     weekly_job_fn = weekly_call.args[0]
     await weekly_job_fn()
-    weekly_pipeline.run.assert_awaited_once_with()
+    weekly_pipeline.run.assert_awaited_once_with(fixed_today)
 
     monthly_job_fn = monthly_call.args[0]
     await monthly_job_fn()
-    monthly_pipeline.run.assert_awaited_once_with()
+    monthly_pipeline.run.assert_awaited_once_with(fixed_today)

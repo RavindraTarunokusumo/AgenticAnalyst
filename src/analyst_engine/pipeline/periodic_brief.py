@@ -25,6 +25,11 @@ class PeriodicPipelineResult:
     cadence: Cadence
     covered_start: date
     covered_end: date
+    # Count of summaries newly selected THIS call. On an idempotent retry
+    # that falls through to a terminal prior WorkflowRun (is_no_content is
+    # False but nothing new was selected), this is 0 even though brief_id
+    # resolves to a real, already-cited Brief - inspect brief_id, not this
+    # field, to learn what a terminal run actually cited.
     summaries_selected: int
     is_no_content: bool
     workflow_run_id: UUID | None
@@ -69,14 +74,12 @@ class PeriodicBriefPipeline:
             _week_window(anchor) if self._cadence is Cadence.WEEKLY else _month_window(anchor)
         )
 
+        selected: list[BatchSummary] = []
         async with session_scope(self._session_factory) as session:
             candidates = await list_eligible_batch_summaries_for_window(
                 session, window_start, window_end
             )
-
-        selected: list[BatchSummary] = []
-        for candidate in candidates:
-            async with session_scope(self._session_factory) as session:
+            for candidate in candidates:
                 already_cited = await is_batch_summary_cited(
                     session,
                     candidate.id,
@@ -84,9 +87,9 @@ class PeriodicBriefPipeline:
                     exclude_covered_start=window_start,
                     exclude_covered_end=window_end,
                 )
-            if already_cited:
-                continue
-            selected.append(candidate)
+                if already_cited:
+                    continue
+                selected.append(candidate)
 
         if not selected:
             # A candidate summary already cited by this exact cadence+window

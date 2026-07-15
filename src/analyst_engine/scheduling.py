@@ -30,10 +30,15 @@ async def register_schedules(
         await pipeline.run(date.today())
 
     async def _run_weekly_pipeline() -> None:
-        await weekly_pipeline.run()
+        # CronTrigger fires on local time; passing local date.today() (rather
+        # than leaving the anchor to PeriodicBriefPipeline's default UTC
+        # clock) keeps the job's window normalization aligned with the local
+        # instant the job actually fired at, avoiding a wrong-day window near
+        # midnight in timezones offset enough from UTC.
+        await weekly_pipeline.run(date.today())
 
     async def _run_monthly_pipeline() -> None:
-        await monthly_pipeline.run()
+        await monthly_pipeline.run(date.today())
 
     # Daily at 02:00 local
     scheduler.add_job(
