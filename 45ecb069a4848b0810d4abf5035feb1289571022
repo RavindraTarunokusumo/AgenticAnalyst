@@ -1,0 +1,5 @@
+Task: GET /archive/search route
+Summary: New read route + ArchiveSearchResultResponse. Cosine similarity is computed in Python from the query vector and each result's stored vector (search_embeddings_by_similarity returns domain objects, not raw SQL distances). Content field is a bounded 280-char prefix, not full brief content.
+Docs: N/A (Task 9 covers docs)
+TODO: Session: Archive Retrieval / Semantic Search (2026-07-15)
+Validation: ruff format/check, mypy clean; 7 new route-level tests (tests/api/test_archive_search.py) all passed
