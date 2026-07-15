@@ -1,0 +1,5 @@
+Task: DashScopeAdapter.embed()
+Summary: Implemented embed() calling client.embeddings.create(model=embedding_model, input=text, extra_headers correlation id), returning (vector, ModelUsage) with completion_tokens defaulted to 0 (embeddings responses have no completion_tokens field). Extracted a shared _map_api_error() helper reused by both generate() and embed() for identical timeout/rate-limit->retryable, other API/unexpected->terminal classification, avoiding duplicated mapping logic per plan Task 2. Added tests/unit/test_dashscope.py (new file, no prior DashScope unit tests existed) covering happy-path vector+usage, timeout->RetryableModelError, and 401->TerminalModelError via httpx.MockTransport injected into the adapter's client, mirroring test_openrouter.py's pattern.
+Docs: N/A
+TODO: Session: Archive Retrieval / Semantic Search (2026-07-15) - DashScopeAdapter.embed(), Tests: adapter embed (happy/error) (partial - DashScope half)
+Validation: ruff format --check / ruff check (pass); mypy src/analyst_engine/models/dashscope.py tests/unit/test_dashscope.py (pass); pytest tests/unit/test_dashscope.py (3 passed)
