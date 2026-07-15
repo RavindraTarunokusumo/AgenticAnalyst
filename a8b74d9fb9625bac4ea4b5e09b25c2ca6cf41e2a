@@ -1,0 +1,5 @@
+Task: Post-PR archival
+Summary: Archived both merged sessions (UI Brief Viewer PR #6, Archive Retrieval PR #7) to docs/iterations/archive/, removed their Session blocks from TODO.md (also corrected one lingering unchecked box - the archive-retrieval scope-extension item was actually done, just never checked off).
+Docs: docs/iterations/archive/2026-07-15-ui-brief-viewer.md, docs/iterations/archive/2026-07-15-archive-retrieval.md, TODO.md
+TODO: N/A (this commit performs the archival)
+Validation: docs-only change, no code
