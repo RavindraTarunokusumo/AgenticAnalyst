@@ -1,0 +1,5 @@
+Task: Components (CadenceTabs, BriefList, BriefDetail, LoadingState, EmptyState, ErrorState)
+Summary: Presentational components per plan Task 3/4 - no fetch calls inside components, props-only. BriefDetail renders content via a <pre> JSX text node (React escapes text interpolation; never innerHTML/dangerouslySetInnerHTML), plus a citations panel with article_url link + source_name label + entities/topics chips per cited_summary.
+Docs: N/A (docs land in a later commit)
+TODO: TODO.md Session: UI / Brief Viewer (2026-07-15) - Components item
+Validation: npm run build, npm run lint (both clean)
