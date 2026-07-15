@@ -46,7 +46,9 @@ Plan: `docs/superpowers/plans/2026-07-15-archive-retrieval.md`
       real pgvector constraint failure.
 - [ ] `GET /archive/search` route + response model (`api/app.py`)
 - [ ] Tests: adapter embed (happy/error)
-- [ ] Tests: best-effort swallow (brief persists despite embed failure)
+- [x] Tests: best-effort swallow (brief persists despite embed failure) -
+      landed in the same commit as the synthesize-node wiring above (mocked
+      unit test + real-DB integration test)
 - [x] Tests: pgvector-backed similarity ordering integration test
 - [ ] Docs: `docs/architecture.md`, `docs/changelog.md`
 
