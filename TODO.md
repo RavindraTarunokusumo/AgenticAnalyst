@@ -6,35 +6,6 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
-## Session: Weekly/Monthly Brief Vertical Slice (2026-07-15)
-
-Spec: `docs/superpowers/specs/2026-07-15-weekly-monthly-brief-design.md`
-Plan: `docs/superpowers/plans/2026-07-15-weekly-monthly-brief.md`
-
-Spec and lightweight plan written; not yet implemented. A future session should
-start at Workflow step 1 (dedicated worktree/branch, e.g.
-`codex/weekly-monthly-brief-plan`) and follow the plan's Task 1-6 build order.
-
-- [x] Write and validate the weekly/monthly brief design specification.
-- [x] Produce the lightweight implementation plan (6 tasks: repository query,
-      `PeriodicBriefPipeline`, runtime/scheduler wiring, API routes +
-      `/workflows/trigger` fix, test sweep, docs reconciliation).
-- [x] Task 1: `list_eligible_batch_summaries_for_window` repository function.
-- [x] Task 2: `PeriodicBriefPipeline` + `PeriodicPipelineResult`.
-- [x] Task 3: Runtime wiring + scheduler rebinding. Extension beyond the plan
-      text: `register_schedules` also drops its now-fully-unused `runner`
-      parameter (weekly/monthly jobs call their pipeline, not the runner,
-      after this task) rather than leaving a dead parameter; call sites in
-      `main.py` and the two affected unit test files were updated to match.
-- [x] Task 4: API routes (`/pipelines/weekly`, `/pipelines/monthly`) +
-      `/workflows/trigger` fix (all 3 cadences delegate to their pipeline).
-- [x] Task 5: Integration/API test sweep + success-criteria verification.
-      PostgreSQL integration tests are added but could not be run locally
-      (Docker unavailable in this dev environment, per docs/insights.md's
-      2026-07-14 note) - CI is the first real run of these; watch its result
-      before considering this task's coverage claim fully verified.
-- [x] Task 6: Documentation reconciliation.
-
 ## Session: <Session Name> (<YYYY-MM-DD>)
 
 - [ ] <sub-item 1>
@@ -43,4 +14,37 @@ start at Workflow step 1 (dedicated worktree/branch, e.g.
 
 ## Future Backlog
 
-- [ ] <future item>
+Candidate next slices, roughly in suggested priority order. None have a spec
+yet; each needs Workflow Step 3 (spec + lightweight plan) before
+implementation. See chat/session notes from 2026-07-15 for the full rationale
+behind this ordering.
+
+- [ ] **Archive retrieval / semantic search over past briefs.** `Embedding`
+      (domain model + `save_embedding` repository function) exists but is
+      never called from any pipeline or graph node - there is no embedding
+      generation step and no read API (e.g. `GET /archive/search`) to query
+      by similarity. This is the largest gap between the current product
+      (three cadences of briefs, browsable only by cadence+date) and
+      "narrative memory you can actually query."
+- [ ] **Prediction expectation resolution.** `PredictionExpectation` rows
+      are created by the frontier synthesis graph (`proposed_expectations`)
+      with `outcome_status`, but nothing ever revisits and updates that
+      status later (no confirm/falsify job or route). The falsifiable-
+      predictions concept is half-built: expectations are proposed but never
+      checked against what actually happened.
+- [ ] **UI / frontend.** The product is API-only end to end (RSS-to-Daily and
+      Weekly/Monthly slices both explicitly scoped UI out). Even a minimal
+      read-only brief viewer would make the existing `GET /briefs` surface
+      usable by a human instead of only `curl`/`gh`.
+- [ ] **claim_event / contradiction graph.** Explicitly deferred since the
+      initial migration (`docs/database.md`); no schema, no design started.
+      Likely the largest single slice on this list - needs its own spec
+      before scoping, not a quick follow-on.
+- [ ] **Evaluation-harness parity check.** `tests/evaluation/
+      test_temporal_holdout.py` (opt-in, excluded from routine CI) drives
+      `WorkflowRunner.run_daily/weekly/monthly` directly, bypassing
+      `DailyBriefPipeline`/`PeriodicBriefPipeline` entirely - it now exercises
+      a different code path than every production trigger (scheduler, API,
+      `/workflows/trigger`). Worth a small follow-up to route it through the
+      pipelines instead, or explicitly document why it intentionally
+      shortcuts them.

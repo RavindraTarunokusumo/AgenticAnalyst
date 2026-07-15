@@ -9,7 +9,7 @@ Summary:
 - Why: This slice proves the full weekly/monthly product loop the same way the RSS-to-Daily-Brief slice proved it for daily — real, already-persisted evidence in, a durable checkpointed Brief out — using only existing, unmodified architecture (the graph, the runner, the citation-exclusion primitive, the read API) plus one new orchestration layer, per the accepted design's explicit constraint not to touch `workflows/graphs.py` or `workflows/runner.py`.
 - User-visible impact: `POST /pipelines/weekly`/`monthly`, a scheduled Sunday/1st-of-month run, or `POST /workflows/trigger` for any of the three cadences now all produce a real Brief citing real evidence for the same window, through the same pipeline instance. `GET /briefs?cadence=weekly|monthly` (already cadence-generic, unchanged) now returns real content instead of degenerate empty-context briefs.
 - Migration notes: None. No schema changes, no new Alembic revision — this slice is read-and-orchestrate only against existing tables.
-- Related PR/commit: pending (branch `codex/weekly-monthly-brief-plan`); see accepted spec `docs/superpowers/specs/2026-07-15-weekly-monthly-brief-design.md` and plan `docs/superpowers/plans/2026-07-15-weekly-monthly-brief.md`.
+- Related PR/commit: PR #4 (merged `552e272`), Tasks 1-6, tracked in `docs/iterations/archive/2026-07-15-weekly-monthly-brief.md`. See accepted spec `docs/superpowers/specs/2026-07-15-weekly-monthly-brief-design.md` and plan `docs/superpowers/plans/2026-07-15-weekly-monthly-brief.md`.
 
 ## 2026-07-14 — RSS-to-Daily-Brief Vertical Slice
 
