@@ -6,11 +6,21 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
-## Session: <Session Name> (<YYYY-MM-DD>)
+## Session: Archive Retrieval / Semantic Search (2026-07-15)
 
-- [ ] <sub-item 1>
-- [ ] <sub-item 2>
-- [ ] <sub-item 3>
+Spec: `docs/superpowers/specs/2026-07-15-archive-retrieval-design.md`
+Plan: `docs/superpowers/plans/2026-07-15-archive-retrieval.md`
+
+- [ ] `ModelGateway.embed()` abstract method (`models/gateway.py`)
+- [ ] `DashScopeAdapter.embed()` (`models/dashscope.py`)
+- [ ] `OpenRouterAdapter.embed()` (`models/openrouter.py`)
+- [ ] `FakeModelGateway.embed()` (`tests/fixtures.py`) - same commit as above
+- [ ] `search_embeddings_by_similarity()` repository function
+- [ ] Wire best-effort embedding into `synthesize` node (`workflows/graphs.py`)
+- [ ] `GET /archive/search` route + response model (`api/app.py`)
+- [ ] Tests: adapter embed (happy/error), best-effort swallow (brief persists
+      despite embed failure), pgvector-backed similarity ordering integration test
+- [ ] Docs: `docs/architecture.md`, `docs/changelog.md`
 
 ## Future Backlog
 
@@ -19,13 +29,6 @@ yet; each needs Workflow Step 3 (spec + lightweight plan) before
 implementation. See chat/session notes from 2026-07-15 for the full rationale
 behind this ordering.
 
-- [ ] **Archive retrieval / semantic search over past briefs.** `Embedding`
-      (domain model + `save_embedding` repository function) exists but is
-      never called from any pipeline or graph node - there is no embedding
-      generation step and no read API (e.g. `GET /archive/search`) to query
-      by similarity. This is the largest gap between the current product
-      (three cadences of briefs, browsable only by cadence+date) and
-      "narrative memory you can actually query."
 - [ ] **Prediction expectation resolution.** `PredictionExpectation` rows
       are created by the frontier synthesis graph (`proposed_expectations`)
       with `outcome_status`, but nothing ever revisits and updates that
