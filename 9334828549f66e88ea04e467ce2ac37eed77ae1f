@@ -1,0 +1,5 @@
+Task: Backend static mount (api/app.py) + local-dev fallback placeholder
+Summary: app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True)) added after all route declarations, before return app. Committed a minimal placeholder static/index.html and .gitignore entries for frontend/dist and frontend/node_modules so a fresh checkout never 404s at /ui/ before npm run build has been run. Consolidated with Task 7 because StaticFiles(directory=...) raises RuntimeError at construction time on a missing directory - the two plan line items were not independently committable.
+Docs: N/A (docs land in a later commit)
+TODO: TODO.md Session: UI / Brief Viewer (2026-07-15) - Backend static mount item (deviation logged inline)
+Validation: uv run ruff format --check / ruff check / mypy on app.py; uv run pytest tests/api -q (35 passed); manual TestClient GET /ui/ -> 200 with placeholder body
