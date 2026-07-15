@@ -1,0 +1,5 @@
+Task: Revise UI spec per product direction
+Summary: Static-file scope rejected by user; revised to React+TS+Vite+Tailwind app with cadence tabs, brief list, brief detail+citations panels, and multi-stage Docker build to keep single-image deployment.
+Docs: docs/superpowers/specs/2026-07-15-ui-brief-viewer-design.md
+TODO: UI/Brief Viewer spec acceptance - spec accepted with revision
+Validation: N/A (docs-only spec revision, no code yet)
