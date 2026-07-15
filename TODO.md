@@ -11,8 +11,8 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 Spec: `docs/superpowers/specs/2026-07-15-archive-retrieval-design.md`
 Plan: `docs/superpowers/plans/2026-07-15-archive-retrieval.md`
 
-- [ ] `ModelGateway.embed()` abstract method (`models/gateway.py`)
-- [ ] `FakeModelGateway.embed()` (`tests/fixtures.py`) - same commit as above
+- [x] `ModelGateway.embed()` abstract method (`models/gateway.py`)
+- [x] `FakeModelGateway.embed()` (`tests/fixtures.py`) - same commit as above
 - [ ] **Scope extension** (found during Task 1): the new abstract method makes
       *every* `ModelGateway` subclass uninstantiable, not just
       `tests/fixtures.py::FakeModelGateway` as the plan called out - four more
@@ -24,11 +24,11 @@ Plan: `docs/superpowers/plans/2026-07-15-archive-retrieval.md`
       `tests/unit/test_workflow_graphs.py::_Gateway`. Landed `embed()` on all
       of them in the same commit as the abstract method to keep collection
       green throughout.
-- [ ] `DashScopeAdapter.embed()` (`models/dashscope.py`)
-- [ ] `OpenRouterAdapter.embed()` (`models/openrouter.py`)
+- [x] `DashScopeAdapter.embed()` (`models/dashscope.py`)
+- [x] `OpenRouterAdapter.embed()` (`models/openrouter.py`)
 - [x] `search_embeddings_by_similarity()` repository function
 - [x] Wire best-effort embedding into `synthesize` node (`workflows/graphs.py`)
-- [ ] **Scope note** (found during this task): the plan's suggested resolution -
+- [x] **Scope note** (found during this task): the plan's suggested resolution -
       a bare `try/except Exception: pass` around `save_embedding` - is not
       actually transaction-safe. Verified empirically (temporarily reverted the
       fix and re-ran the new DB-level-failure integration test): when
@@ -43,7 +43,10 @@ Plan: `docs/superpowers/plans/2026-07-15-archive-retrieval.md`
       new integration test
       (`test_synthesize_node_persists_brief_despite_db_level_embedding_failure`)
       using a fake gateway that returns a wrong-dimension vector to trigger a
-      real pgvector constraint failure.
+      real pgvector constraint failure. Code review follow-up (`86595dd`):
+      moved the `gateway.embed()` network call out of `session_scope`
+      entirely (not just out of the SAVEPOINT), so no pooled DB connection/
+      transaction is held during the network call.
 - [x] `GET /archive/search` route + response model (`api/app.py`) - landed
       with route-level tests in the same commit (7 cases: happy path,
       cadence/limit passthrough, blank q, limit out of range, unknown
@@ -77,11 +80,3 @@ behind this ordering.
       initial migration (`docs/database.md`); no schema, no design started.
       Likely the largest single slice on this list - needs its own spec
       before scoping, not a quick follow-on.
-- [ ] **Evaluation-harness parity check.** `tests/evaluation/
-      test_temporal_holdout.py` (opt-in, excluded from routine CI) drives
-      `WorkflowRunner.run_daily/weekly/monthly` directly, bypassing
-      `DailyBriefPipeline`/`PeriodicBriefPipeline` entirely - it now exercises
-      a different code path than every production trigger (scheduler, API,
-      `/workflows/trigger`). Worth a small follow-up to route it through the
-      pipelines instead, or explicitly document why it intentionally
-      shortcuts them.
