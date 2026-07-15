@@ -1,0 +1,5 @@
+Task: search_embeddings_by_similarity
+Summary: New repository query joining embedding->brief, ordered by ORMEmbedding.vector.cosine_distance(query_vector), optional cadence filter. brief.cadence is the source of truth for cadence filtering, not embedding.metadata.
+Docs: N/A (Task 9 covers docs)
+TODO: Session: Archive Retrieval / Semantic Search (2026-07-15)
+Validation: ruff format/check, mypy clean; tests/integration/test_archive_retrieval.py (3 tests) passed against a live pgvector/pgvector:0.8.0-pg16 testcontainer
