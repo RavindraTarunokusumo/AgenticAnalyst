@@ -1,0 +1,5 @@
+Task: Dockerfile multi-stage build (Node build stage + COPY into runtime stage)
+Summary: Added FROM node:22-slim AS frontend-build (npm ci && npm run build against frontend/), then COPY --from=frontend-build /app/frontend/dist ./src/analyst_engine/api/static in the runtime stage, right after the existing COPY src ./src line. Playwright/Chromium install, non-root user, and entrypoint are unchanged. Also added frontend/node_modules to .dockerignore.
+Docs: N/A (docs land in a later commit)
+TODO: TODO.md Session: UI / Brief Viewer (2026-07-15) - Dockerfile item
+Validation: docker build --target frontend-build (isolated stage check) and a full docker build . (end to end) both succeeded; verified inside the built image that /app/src/analyst_engine/api/static/index.html and assets/ are the real Vite build output, not the committed placeholder
