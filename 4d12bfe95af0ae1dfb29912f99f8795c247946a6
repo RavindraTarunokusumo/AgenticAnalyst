@@ -1,0 +1,5 @@
+Task: App shell / state (frontend/src/App.tsx)
+Summary: App.tsx owns cadence/selected-brief/list/detail/loading/error state via useState, wires fetchBriefList/fetchBriefDetail to the presentational components. Cadence switch re-fetches list + clears selection; brief selection only re-fetches detail (list untouched). No react-router, no global store (YAGNI per spec §3.1/§6).
+Docs: N/A (docs land in a later commit)
+TODO: TODO.md Session: UI / Brief Viewer (2026-07-15) - App shell / state item
+Validation: npm run build, npm run lint (both clean)
