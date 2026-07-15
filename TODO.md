@@ -28,7 +28,11 @@ start at Workflow step 1 (dedicated worktree/branch, e.g.
       `main.py` and the two affected unit test files were updated to match.
 - [x] Task 4: API routes (`/pipelines/weekly`, `/pipelines/monthly`) +
       `/workflows/trigger` fix (all 3 cadences delegate to their pipeline).
-- [ ] Task 5: Integration/API test sweep + success-criteria verification.
+- [x] Task 5: Integration/API test sweep + success-criteria verification.
+      PostgreSQL integration tests are added but could not be run locally
+      (Docker unavailable in this dev environment, per docs/insights.md's
+      2026-07-14 note) - CI is the first real run of these; watch its result
+      before considering this task's coverage claim fully verified.
 - [ ] Task 6: Documentation reconciliation.
 
 ## Session: <Session Name> (<YYYY-MM-DD>)
