@@ -14,7 +14,7 @@ Plan: `docs/superpowers/plans/2026-07-15-ui-brief-viewer.md`
 - [x] `frontend/` scaffold (Vite + React + TS + Tailwind)
 - [ ] API client module (`frontend/src/api.ts`)
 - [x] Components: `CadenceTabs`, `BriefList`, `BriefDetail`, loading/empty/error states
-- [ ] App shell / state (`frontend/src/App.tsx`)
+- [x] App shell / state (`frontend/src/App.tsx`)
 - [ ] Backend static mount (`api/app.py`)
 - [ ] `Dockerfile` multi-stage build (Node build stage + COPY into runtime stage)
 - [ ] Local-dev fallback placeholder (`api/static/index.html` + gitignore `frontend/dist/`)
