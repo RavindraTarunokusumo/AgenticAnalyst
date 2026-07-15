@@ -11,6 +11,15 @@ Summary:
 - Migration notes: None. No schema changes - reuses the existing `embedding` table and `Vector(1536)` column from a prior slice.
 - Related PR/commit: tracked in `docs/superpowers/specs/2026-07-15-archive-retrieval-design.md` and `docs/superpowers/plans/2026-07-15-archive-retrieval.md`; see `TODO.md` for commit hashes.
 
+## 2026-07-15 — UI / Brief Viewer
+
+Summary:
+- What changed: Added a React + TypeScript + Vite + Tailwind CSS SPA (`frontend/`, the repo's first Node/npm toolchain) served read-only at `GET /ui/*` via `StaticFiles(directory=..., html=True)` mounted last in `create_app()`. The viewer has cadence tabs (daily/weekly/monthly), a brief list panel, and a detail panel (content, resolved citations, entity/topic chips), all backed by the existing unmodified `GET /briefs` / `GET /briefs/{brief_id}` routes via a typed client (`frontend/src/api.ts`) that mirrors `BriefListItemResponse`/`BriefDetailResponse` field-for-field. The Dockerfile gained a first `frontend-build` Node stage whose `dist/` output is copied into the existing Python runtime stage, keeping one deployable image. A committed placeholder `index.html` under `src/analyst_engine/api/static/` (gitignored `frontend/dist/` overwrites it locally on build; Docker always produces the real one) keeps `/ui/` from 404ing on a fresh checkout with no frontend build run yet. CI gained a parallel `frontend` job (`npm ci`, `oxlint`, `npm run build` including `tsc -b`).
+- Why: The product was API-only end to end (`GET /briefs` usable only via curl/gh); this closes that gap with a minimal read-only viewer, per the accepted spec's revision to a full React app (not a static HTML file) per explicit product direction.
+- User-visible impact: `GET /ui/` now serves a working brief browser after `npm run build` (local) or in the built Docker image; no change to any existing API route's behavior or auth.
+- Migration notes: None. No schema or API contract changes - the SPA only reads existing routes.
+- Related PR/commit: tracked in `docs/superpowers/specs/2026-07-15-ui-brief-viewer-design.md` and `docs/superpowers/plans/2026-07-15-ui-brief-viewer.md`; see `TODO.md` for commit hashes.
+
 ## 2026-07-15 — Weekly/Monthly Brief Vertical Slice
 
 Summary:
