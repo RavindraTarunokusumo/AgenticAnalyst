@@ -1,0 +1,5 @@
+Task: CI extend to build/lint frontend
+Summary: Added a parallel 'frontend' job to .github/workflows/ci.yml (actions/setup-node pinned via frontend/.nvmrc, npm ci with cached package-lock.json, npm run lint (oxlint), npm run build (tsc -b + vite build)). Closes the CI gap flagged in the plan's Risks section - a broken frontend build is now caught in CI, not only when building the Docker image.
+Docs: N/A (docs land in a later commit)
+TODO: TODO.md Session: UI / Brief Viewer (2026-07-15) - CI item
+Validation: python3 -c "import yaml; yaml.safe_load(...)" (syntax check); local npm ci/lint/build all pass
