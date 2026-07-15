@@ -1,0 +1,5 @@
+Task: Eval harness parity documentation
+Summary: Documented why test_temporal_holdout.py intentionally bypasses DailyBriefPipeline/PeriodicBriefPipeline (synthetic in-memory corpus, no DB; rerouting needs new seeding infra not built here).
+Docs: docs/testing.md, tests/evaluation/test_temporal_holdout.py docstring
+TODO: Eval Harness Parity Documentation (2026-07-15) - completed
+Validation: ruff format --check ., ruff check ., mypy src tests, pytest (245 passed, 2 skipped)
