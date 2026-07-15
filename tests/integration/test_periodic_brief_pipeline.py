@@ -197,17 +197,22 @@ async def _seed_batch_summary(
     published_at: datetime,
     key: str,
 ) -> BatchSummary:
-    article = Article(
-        source_id=source.id,
-        url=f"https://example.com/periodic-{key}",
-        url_fingerprint=f"fp-periodic-{key}",
-        title=f"Periodic Update {key}",
-        published_at=published_at,
-        language="en",
-        cleaned_content=_SHARED_EXCERPT,
-    )
+    # ArticleBatch requires 3-5 article_ids; all three share the same
+    # published_at since only the batch's window membership is under test.
+    articles = [
+        Article(
+            source_id=source.id,
+            url=f"https://example.com/periodic-{key}-{index}",
+            url_fingerprint=f"fp-periodic-{key}-{index}",
+            title=f"Periodic Update {key} {index}",
+            published_at=published_at,
+            language="en",
+            cleaned_content=_SHARED_EXCERPT,
+        )
+        for index in range(1, 4)
+    ]
     batch = ArticleBatch(
-        article_ids=[article.id],
+        article_ids=[article.id for article in articles],
         batch_key=f"batch:periodic-{key}",
         grouping_method=GroupingMethod.TITLE_TOKEN_JACCARD,
         embedding_model="test-emb",
@@ -217,10 +222,11 @@ async def _seed_batch_summary(
         model="qwen3.5-flash",
         prompt_version="v1",
         summary=f"Periodic summary {key}.",
-        citations=[Citation(article_id=article.id, excerpt=_SHARED_EXCERPT)],
+        citations=[Citation(article_id=articles[0].id, excerpt=_SHARED_EXCERPT)],
     )
     async with session_scope(session_factory) as sess:
-        await save_article(sess, article)
+        for article in articles:
+            await save_article(sess, article)
         await save_article_batch(sess, batch)
         await save_batch_summary(sess, summary)
     return summary

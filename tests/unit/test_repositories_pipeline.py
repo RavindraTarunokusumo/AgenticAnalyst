@@ -319,17 +319,23 @@ async def test_list_eligible_batch_summaries_for_window_respects_exact_boundary(
 
     def _batch_and_summary(
         published_at: datetime, *, key: str
-    ) -> tuple[ArticleBatch, BatchSummary, Article]:
-        article = Article(
-            source_id=source.id,
-            url=f"https://example.com/{key}",
-            url_fingerprint=f"fp-{key}",
-            title=f"Window Article {key}",
-            published_at=published_at,
-            cleaned_content=f"Body {key}.",
-        )
+    ) -> tuple[ArticleBatch, BatchSummary, list[Article]]:
+        # ArticleBatch requires 3-5 article_ids; all three share the same
+        # published_at here since the boundary under test is which instant
+        # the batch's articles fall on, not batch composition.
+        articles = [
+            Article(
+                source_id=source.id,
+                url=f"https://example.com/{key}-{index}",
+                url_fingerprint=f"fp-{key}-{index}",
+                title=f"Window Article {key} {index}",
+                published_at=published_at,
+                cleaned_content=f"Body {key} {index}.",
+            )
+            for index in range(1, 4)
+        ]
         batch = ArticleBatch(
-            article_ids=[article.id],
+            article_ids=[article.id for article in articles],
             batch_key=f"batch:window-{key}",
             grouping_method=GroupingMethod.TITLE_TOKEN_JACCARD,
             embedding_model="test-emb",
@@ -339,9 +345,9 @@ async def test_list_eligible_batch_summaries_for_window_respects_exact_boundary(
             model="qwen3.5-flash",
             prompt_version="v1",
             summary=f"Summary {key}.",
-            citations=[Citation(article_id=article.id, excerpt=article.cleaned_content)],
+            citations=[Citation(article_id=articles[0].id, excerpt=articles[0].cleaned_content)],
         )
-        return batch, summary, article
+        return batch, summary, articles
 
     in_lower_boundary = _batch_and_summary(
         datetime.combine(window_start, datetime.min.time(), tzinfo=UTC), key="lower"
@@ -357,13 +363,14 @@ async def test_list_eligible_batch_summaries_for_window_respects_exact_boundary(
 
     async with session_scope(migrated) as sess:
         await upsert_source(sess, source)
-        for batch, summary, article in (
+        for batch, summary, articles in (
             in_lower_boundary,
             in_upper_boundary,
             before_window,
             after_window,
         ):
-            await save_article(sess, article)
+            for article in articles:
+                await save_article(sess, article)
             await save_article_batch(sess, batch)
             await save_batch_summary(sess, summary)
 
@@ -400,8 +407,20 @@ async def test_list_eligible_batch_summaries_for_window_includes_batch_with_mixe
         published_at=datetime(2026, 7, 20, 12, 0, tzinfo=UTC),
         cleaned_content="Out of window body.",
     )
+    second_out_of_window_article = Article(
+        source_id=source.id,
+        url="https://example.com/mixed-out-2",
+        url_fingerprint="fp-mixed-out-2",
+        title="Mixed Out Of Window Two",
+        published_at=datetime(2026, 8, 1, 12, 0, tzinfo=UTC),
+        cleaned_content="Second out of window body.",
+    )
     batch = ArticleBatch(
-        article_ids=[in_window_article.id, out_of_window_article.id],
+        article_ids=[
+            in_window_article.id,
+            out_of_window_article.id,
+            second_out_of_window_article.id,
+        ],
         batch_key="batch:window-mixed",
         grouping_method=GroupingMethod.TITLE_TOKEN_JACCARD,
         embedding_model="test-emb",
@@ -418,6 +437,7 @@ async def test_list_eligible_batch_summaries_for_window_includes_batch_with_mixe
         await upsert_source(sess, source)
         await save_article(sess, in_window_article)
         await save_article(sess, out_of_window_article)
+        await save_article(sess, second_out_of_window_article)
         await save_article_batch(sess, batch)
         await save_batch_summary(sess, summary)
 
