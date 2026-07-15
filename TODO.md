@@ -54,7 +54,7 @@ Plan: `docs/superpowers/plans/2026-07-15-archive-retrieval.md`
       landed in the same commit as the synthesize-node wiring above (mocked
       unit test + real-DB integration test)
 - [x] Tests: pgvector-backed similarity ordering integration test
-- [ ] Docs: `docs/architecture.md`, `docs/changelog.md`
+- [x] Docs: `docs/architecture.md`, `docs/changelog.md`
 
 ## Future Backlog
 
