@@ -1,0 +1,5 @@
+Task: API client module (frontend/src/api.ts)
+Summary: Typed fetch wrappers fetchBriefList/fetchBriefDetail for GET /briefs and GET /briefs/{id}, mirroring BriefListItemResponse/BriefDetailResponse field-for-field. Both throw on non-2xx (including 404) rather than swallowing errors, per plan Task 2 contract.
+Docs: N/A (docs land in a later commit)
+TODO: TODO.md Session: UI / Brief Viewer (2026-07-15) - API client module item
+Validation: npm run build, npm run lint (both clean)
