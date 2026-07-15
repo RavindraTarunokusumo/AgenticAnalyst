@@ -1,0 +1,5 @@
+Task: Fix eval-harness docstring per bundled review
+Summary: Corrected two overstated claims (no corpus replay happens; pipelines do live ingestion/batching/summarization, not just selection) and added a note that the test is skip-only/not currently runnable if unskipped (session_factory=None -> TypeError).
+Docs: docs/testing.md, tests/evaluation/test_temporal_holdout.py docstring
+TODO: Eval Harness Parity Documentation (2026-07-15) - review response
+Validation: ruff format --check ., ruff check ., mypy src tests, pytest (245 passed, 2 skipped)
