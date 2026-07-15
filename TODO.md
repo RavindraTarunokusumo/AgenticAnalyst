@@ -33,7 +33,7 @@ start at Workflow step 1 (dedicated worktree/branch, e.g.
       (Docker unavailable in this dev environment, per docs/insights.md's
       2026-07-14 note) - CI is the first real run of these; watch its result
       before considering this task's coverage claim fully verified.
-- [ ] Task 6: Documentation reconciliation.
+- [x] Task 6: Documentation reconciliation.
 
 ## Session: <Session Name> (<YYYY-MM-DD>)
 
