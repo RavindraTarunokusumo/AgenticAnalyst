@@ -44,7 +44,10 @@ Plan: `docs/superpowers/plans/2026-07-15-archive-retrieval.md`
       (`test_synthesize_node_persists_brief_despite_db_level_embedding_failure`)
       using a fake gateway that returns a wrong-dimension vector to trigger a
       real pgvector constraint failure.
-- [ ] `GET /archive/search` route + response model (`api/app.py`)
+- [x] `GET /archive/search` route + response model (`api/app.py`) - landed
+      with route-level tests in the same commit (7 cases: happy path,
+      cadence/limit passthrough, blank q, limit out of range, unknown
+      cadence, 503 on TerminalModelError, empty results)
 - [ ] Tests: adapter embed (happy/error)
 - [x] Tests: best-effort swallow (brief persists despite embed failure) -
       landed in the same commit as the synthesize-node wiring above (mocked
