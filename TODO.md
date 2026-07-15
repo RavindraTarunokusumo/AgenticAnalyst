@@ -6,11 +6,21 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
-## Session: <Session Name> (<YYYY-MM-DD>)
+## Session: UI / Brief Viewer (2026-07-15)
 
-- [ ] <sub-item 1>
-- [ ] <sub-item 2>
-- [ ] <sub-item 3>
+Spec: `docs/superpowers/specs/2026-07-15-ui-brief-viewer-design.md`
+Plan: `docs/superpowers/plans/2026-07-15-ui-brief-viewer.md`
+
+- [ ] `frontend/` scaffold (Vite + React + TS + Tailwind)
+- [ ] API client module (`frontend/src/api.ts`)
+- [ ] Components: `CadenceTabs`, `BriefList`, `BriefDetail`, loading/empty/error states
+- [ ] App shell / state (`frontend/src/App.tsx`)
+- [ ] Backend static mount (`api/app.py`)
+- [ ] `Dockerfile` multi-stage build (Node build stage + COPY into runtime stage)
+- [ ] Local-dev fallback placeholder (`api/static/index.html` + gitignore `frontend/dist/`)
+- [ ] CI: extend to build/lint frontend, or explicitly document the gap
+- [ ] Tests: backend mount smoke test, existing `GET /briefs` tests untouched
+- [ ] Docs: `docs/architecture.md`, `docs/commands.md`, `docs/changelog.md`
 
 ## Future Backlog
 
@@ -32,10 +42,6 @@ behind this ordering.
       status later (no confirm/falsify job or route). The falsifiable-
       predictions concept is half-built: expectations are proposed but never
       checked against what actually happened.
-- [ ] **UI / frontend.** The product is API-only end to end (RSS-to-Daily and
-      Weekly/Monthly slices both explicitly scoped UI out). Even a minimal
-      read-only brief viewer would make the existing `GET /briefs` surface
-      usable by a human instead of only `curl`/`gh`.
 - [ ] **claim_event / contradiction graph.** Explicitly deferred since the
       initial migration (`docs/database.md`); no schema, no design started.
       Likely the largest single slice on this list - needs its own spec
