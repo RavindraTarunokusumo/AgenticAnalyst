@@ -231,6 +231,17 @@ def _brief_to_domain(row: ORMBrief) -> Brief:
     )
 
 
+def _embedding_to_domain(row: ORMEmbedding) -> Embedding:
+    return Embedding(
+        id=row.id,
+        brief_id=row.brief_id,
+        model=row.model,
+        vector=list(row.vector),
+        metadata=dict(row.meta or {}),
+        created_at=row.created_at,
+    )
+
+
 def _batch_to_orm(b: ArticleBatch) -> ORMArticleBatch:
     return ORMArticleBatch(
         id=b.id,
@@ -441,6 +452,33 @@ async def save_embedding(session: AsyncSession, emb: Embedding) -> Embedding:
     session.add(orm)
     await session.flush()
     return emb
+
+
+async def search_embeddings_by_similarity(
+    session: AsyncSession,
+    query_vector: list[float],
+    *,
+    cadence: Cadence | None,
+    limit: int,
+) -> list[tuple[Embedding, Brief]]:
+    """Nearest-first briefs by cosine distance between their embedding and query_vector.
+
+    The `brief` row (joined on brief_id) is the source of truth for cadence -
+    `embedding.metadata` is not queried here, avoiding a second copy that
+    could drift from the owning brief.
+    """
+    stmt = (
+        select(ORMEmbedding, ORMBrief)
+        .join(ORMBrief, ORMBrief.id == ORMEmbedding.brief_id)
+        .order_by(ORMEmbedding.vector.cosine_distance(query_vector).asc())
+        .limit(limit)
+    )
+    if cadence is not None:
+        stmt = stmt.where(ORMBrief.cadence == cadence.value)
+    rows = (await session.execute(stmt)).all()
+    return [
+        (_embedding_to_domain(emb_row), _brief_to_domain(brief_row)) for emb_row, brief_row in rows
+    ]
 
 
 async def create_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun:

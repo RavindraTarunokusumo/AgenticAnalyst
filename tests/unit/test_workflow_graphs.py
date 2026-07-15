@@ -10,7 +10,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from analyst_engine.domain.models import BatchSummary, Cadence, Citation, NarrativeStateVersion
-from analyst_engine.models.gateway import ModelGateway, ModelTask, ModelUsage
+from analyst_engine.models.gateway import ModelError, ModelGateway, ModelTask, ModelUsage
 from analyst_engine.workflows.graphs import (
     _frontier_synthesis,
     build_daily_graph,
@@ -20,9 +20,27 @@ from analyst_engine.workflows.graphs import (
 from analyst_engine.workflows.state import BriefGenerationInput
 
 
+class _NestedTransaction:
+    """Minimal stand-in for SQLAlchemy's `AsyncSessionTransaction` (the object
+    `session.begin_nested()` returns), so `async with session.begin_nested():`
+    works against a fake session in these mocked-persistence unit tests."""
+
+    async def __aenter__(self) -> _NestedTransaction:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> bool:
+        return False
+
+
+class _FakeSession:
+    def begin_nested(self) -> _NestedTransaction:
+        return _NestedTransaction()
+
+
 class _Gateway(ModelGateway):
-    def __init__(self, *, malformed: bool = False) -> None:
+    def __init__(self, *, malformed: bool = False, embed_error: bool = False) -> None:
         self.malformed = malformed
+        self.embed_error = embed_error
         self.tasks: list[ModelTask] = []
         self.messages: list[dict[str, str]] = []
 
@@ -61,6 +79,11 @@ class _Gateway(ModelGateway):
 
     def get_model_for_task(self, task: ModelTask) -> str:
         return "fake"
+
+    async def embed(self, *, text: str, correlation_id: str) -> tuple[list[float], ModelUsage]:
+        if self.embed_error:
+            raise ModelError("embedding failed", retryable=True)
+        return [0.1] * 1536, ModelUsage(model="fake-embed")
 
 
 def _input(cadence: Cadence) -> BriefGenerationInput:
@@ -185,3 +208,71 @@ async def test_each_cadence_graph_commits_brief_and_narrative(
     assert save_expectation.await_args_list[0].args[1].narrative_version_id == (
         save_narrative.await_args_list[0].args[1].id
     )
+
+
+async def test_synthesize_persists_embedding_alongside_brief(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _FakeSession()
+
+    @asynccontextmanager
+    async def fake_scope(_factory: object) -> AsyncIterator[object]:
+        yield session
+
+    save_brief = AsyncMock()
+    save_embedding = AsyncMock()
+    monkeypatch.setattr("analyst_engine.workflows.graphs.session_scope", fake_scope)
+    monkeypatch.setattr("analyst_engine.workflows.graphs.save_brief", save_brief)
+    monkeypatch.setattr("analyst_engine.workflows.graphs.save_narrative_version", AsyncMock())
+    monkeypatch.setattr("analyst_engine.workflows.graphs.save_prediction_expectation", AsyncMock())
+    monkeypatch.setattr("analyst_engine.workflows.graphs.save_embedding", save_embedding)
+    inp = _input(Cadence.DAILY)
+    state = {
+        "cadence": Cadence.DAILY.value,
+        "covered_start": inp.covered_start.isoformat(),
+        "covered_end": inp.covered_end.isoformat(),
+        "batch_summaries": [item.model_dump(mode="python") for item in inp.batch_summaries],
+        "correlation_id": inp.correlation_id,
+    }
+
+    graph = build_daily_graph(_Gateway(), Mock()).compile()
+    await graph.ainvoke(state)
+
+    save_embedding.assert_awaited_once()
+    args = save_embedding.await_args_list[0].args
+    assert args[0] is session
+    assert args[1].brief_id == save_brief.await_args_list[0].args[1].id
+    assert args[1].vector == [0.1] * 1536
+
+
+async def test_synthesize_swallows_embed_failure_and_still_persists_brief(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _FakeSession()
+
+    @asynccontextmanager
+    async def fake_scope(_factory: object) -> AsyncIterator[object]:
+        yield session
+
+    save_brief = AsyncMock()
+    save_embedding = AsyncMock()
+    monkeypatch.setattr("analyst_engine.workflows.graphs.session_scope", fake_scope)
+    monkeypatch.setattr("analyst_engine.workflows.graphs.save_brief", save_brief)
+    monkeypatch.setattr("analyst_engine.workflows.graphs.save_narrative_version", AsyncMock())
+    monkeypatch.setattr("analyst_engine.workflows.graphs.save_prediction_expectation", AsyncMock())
+    monkeypatch.setattr("analyst_engine.workflows.graphs.save_embedding", save_embedding)
+    inp = _input(Cadence.DAILY)
+    state = {
+        "cadence": Cadence.DAILY.value,
+        "covered_start": inp.covered_start.isoformat(),
+        "covered_end": inp.covered_end.isoformat(),
+        "batch_summaries": [item.model_dump(mode="python") for item in inp.batch_summaries],
+        "correlation_id": inp.correlation_id,
+    }
+
+    graph = build_daily_graph(_Gateway(embed_error=True), Mock()).compile()
+    result = await graph.ainvoke(state)
+
+    save_brief.assert_awaited_once()
+    save_embedding.assert_not_awaited()
+    assert result["error"] is None

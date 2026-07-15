@@ -104,3 +104,10 @@ class OpenRouterAdapter(ModelGateway):
                 f"Unexpected error calling OpenRouter for {task}",
                 details={"correlation_id": correlation_id},
             ) from exc
+
+    async def embed(self, *, text: str, correlation_id: str) -> tuple[list[float], ModelUsage]:
+        # get_model_for_task already raises TerminalModelError for ModelTask.EMBED
+        # unconditionally (OpenRouter has no embeddings endpoint); no HTTP call is
+        # ever reached.
+        self.get_model_for_task(ModelTask.EMBED)
+        raise AssertionError("unreachable: get_model_for_task always raises for ModelTask.EMBED")

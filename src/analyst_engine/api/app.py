@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.responses import JSONResponse
@@ -19,6 +20,7 @@ from analyst_engine.api.readiness import ReadinessStatus, check_readiness
 from analyst_engine.config import Settings
 from analyst_engine.domain.models import Cadence, IngestionStatus, Source, SourceFeed
 from analyst_engine.ingestion.canonicalize import UrlValidationError, canonicalize_url
+from analyst_engine.models.gateway import RetryableModelError, TerminalModelError
 from analyst_engine.persistence.engine import session_scope
 from analyst_engine.persistence.repositories import (
     get_articles_by_ids,
@@ -30,6 +32,7 @@ from analyst_engine.persistence.repositories import (
     list_prior_briefs,
     list_source_feeds_for_source,
     list_sources,
+    search_embeddings_by_similarity,
     upsert_source,
     upsert_source_feed,
 )
@@ -199,9 +202,31 @@ class BriefDetailResponse(BaseModel):
     cited_summaries: list[ResolvedBatchSummaryResponse]
 
 
+class ArchiveSearchResultResponse(BaseModel):
+    brief_id: UUID
+    cadence: str
+    covered_start: date
+    covered_end: date
+    created_at: datetime
+    content: str
+    similarity_score: float
+
+
 def get_settings() -> Settings:
     # In real app this would be injected from lifespan or dependency
     return Settings()  # relies on .env
+
+
+_ARCHIVE_SNIPPET_LENGTH = 280
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    dot = float(sum(x * y for x, y in zip(a, b, strict=True)))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 def _feed_to_health_response(feed: SourceFeed) -> FeedHealthResponse:
@@ -591,6 +616,55 @@ def create_app(
             created_at=brief.created_at,
             cited_summaries=cited_summaries,
         )
+
+    @app.get("/archive/search", response_model=list[ArchiveSearchResultResponse])
+    async def search_archive(
+        q: str, cadence: str | None = None, limit: int = 10
+    ) -> list[ArchiveSearchResultResponse]:
+        if not q.strip():
+            raise HTTPException(status_code=422, detail="q must not be blank")
+        if not 1 <= limit <= 50:
+            raise HTTPException(status_code=422, detail="limit must be between 1 and 50")
+        parsed_cadence: Cadence | None = None
+        if cadence is not None:
+            try:
+                parsed_cadence = Cadence(cadence)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="unknown cadence") from exc
+
+        runtime: RuntimeDependencies = app.state.runtime
+        try:
+            query_vector, _usage = await runtime.gateway.embed(text=q, correlation_id=str(uuid4()))
+        except TerminalModelError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="archive search unavailable: embeddings not supported by the "
+                "configured model provider",
+            ) from exc
+        except RetryableModelError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="archive search temporarily unavailable: embedding request failed, "
+                "try again",
+            ) from exc
+
+        async with session_scope(runtime.session_factory) as session:
+            results = await search_embeddings_by_similarity(
+                session, query_vector, cadence=parsed_cadence, limit=limit
+            )
+
+        return [
+            ArchiveSearchResultResponse(
+                brief_id=brief.id,
+                cadence=brief.cadence.value,
+                covered_start=brief.covered_start,
+                covered_end=brief.covered_end,
+                created_at=brief.created_at,
+                content=brief.content[:_ARCHIVE_SNIPPET_LENGTH],
+                similarity_score=_cosine_similarity(query_vector, embedding.vector),
+            )
+            for embedding, brief in results
+        ]
 
     app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
 

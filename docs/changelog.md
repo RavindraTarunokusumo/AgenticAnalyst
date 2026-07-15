@@ -2,6 +2,15 @@
 
 Record notable behavior, architecture, API, persistence, or workflow changes.
 
+## 2026-07-15 — Archive Retrieval / Semantic Search
+
+Summary:
+- What changed: Added `ModelGateway.embed()` (new abstract method; `DashScopeAdapter.embed` calls `client.embeddings.create`, `OpenRouterAdapter.embed` unconditionally raises `TerminalModelError` since OpenRouter has no embeddings endpoint). The `synthesize` node now best-effort embeds every new brief's content and persists it via `save_embedding`, wrapped in a SAVEPOINT (`session.begin_nested()`) rather than a bare `try/except`, so neither a model-side nor a DB-side embedding failure can roll back the brief/narrative/expectations already flushed in the same transaction (verified empirically against a real DB-level failure - see `docs/architecture.md`). New `search_embeddings_by_similarity` repository function (embedding joined to brief, ordered by pgvector cosine distance, optional cadence filter). New `GET /archive/search?q=...&cadence=...&limit=...` route ranks briefs by similarity to a free-text query, returning a bounded content snippet and similarity score per result.
+- Why: `Embedding` (domain model + `save_embedding`) existed since an earlier slice but was never called from any pipeline or graph node - there was no embedding generation step and no read API to query by similarity, the largest gap between the current product (three cadences of briefs, browsable only by cadence+date) and "narrative memory you can actually query," per `TODO.md`'s Future Backlog.
+- User-visible impact: every new brief (any cadence) now gets an `Embedding` row on the happy path; `GET /archive/search` lets a caller find past briefs by meaning, not just cadence/date. No change to brief creation's existing behavior on the OpenRouter provider or on any DB-layer embedding failure - both degrade silently, brief creation itself always succeeds.
+- Migration notes: None. No schema changes - reuses the existing `embedding` table and `Vector(1536)` column from a prior slice.
+- Related PR/commit: tracked in `docs/superpowers/specs/2026-07-15-archive-retrieval-design.md` and `docs/superpowers/plans/2026-07-15-archive-retrieval.md`; see `TODO.md` for commit hashes.
+
 ## 2026-07-15 — UI / Brief Viewer
 
 Summary:

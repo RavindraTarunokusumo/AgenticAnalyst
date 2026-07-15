@@ -85,6 +85,9 @@ class _CountingGateway(ModelGateway):
     def get_model_for_task(self, task: ModelTask) -> str:
         return "fake-model"
 
+    async def embed(self, *, text: str, correlation_id: str) -> tuple[list[float], ModelUsage]:
+        return [0.1] * 1536, ModelUsage(model="fake-embed")
+
 
 @pytest.fixture(scope="session")
 def pg_container():  # type: ignore[no-untyped-def, unused-ignore]

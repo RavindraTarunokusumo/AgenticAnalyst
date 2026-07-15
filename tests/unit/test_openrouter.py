@@ -142,6 +142,23 @@ async def test_openrouter_rejects_embed_without_http_request() -> None:
 
 
 @pytest.mark.asyncio
+async def test_openrouter_embed_rejects_without_http_request() -> None:
+    called = False
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(500, request=request)
+
+    adapter = _adapter(httpx.MockTransport(handler))
+
+    with pytest.raises(TerminalModelError, match="does not support embeddings"):
+        await adapter.embed(text="query text", correlation_id="corr-embed-2")
+
+    assert called is False
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("status", [429, 500, 503])
 async def test_openrouter_classifies_transient_http_errors_as_retryable(status: int) -> None:
     def handler(request: httpx.Request) -> httpx.Response:

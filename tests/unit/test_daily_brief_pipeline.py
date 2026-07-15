@@ -129,6 +129,9 @@ class _FakeGateway(ModelGateway):
     def get_model_for_task(self, task: ModelTask) -> str:
         return "fake"
 
+    async def embed(self, *, text: str, correlation_id: str) -> tuple[list[float], ModelUsage]:
+        raise AssertionError("gateway.embed should not be called in unit tests")
+
 
 class _PipelineHarness:
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:

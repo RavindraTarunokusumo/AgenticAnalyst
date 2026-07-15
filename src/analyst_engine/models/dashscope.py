@@ -9,12 +9,42 @@ from pydantic import BaseModel, ValidationError
 
 from analyst_engine.config import Settings
 from analyst_engine.models.gateway import (
+    ModelError,
     ModelGateway,
     ModelTask,
     ModelUsage,
     RetryableModelError,
     TerminalModelError,
 )
+
+
+def _map_api_error(
+    exc: Exception, *, task: ModelTask, model: str, correlation_id: str
+) -> ModelError:
+    """Translate an openai-SDK exception into the ModelGateway error contract.
+
+    Shared by generate() and embed() so both DashScope call sites classify
+    provider errors identically (timeout/rate-limit -> retryable, other API
+    errors or unexpected exceptions -> terminal).
+    """
+    if isinstance(exc, (APITimeoutError, RateLimitError)):
+        return RetryableModelError(
+            f"Retryable DashScope error for {task}: {exc}",
+            details={"model": model, "correlation_id": correlation_id},
+        )
+    if isinstance(exc, APIError):
+        return TerminalModelError(
+            f"Terminal DashScope error for {task}: {exc}",
+            details={
+                "model": model,
+                "correlation_id": correlation_id,
+                "status": getattr(exc, "status_code", None),
+            },
+        )
+    return TerminalModelError(
+        f"Unexpected error calling DashScope for {task}",
+        details={"correlation_id": correlation_id},
+    )
 
 
 class DashScopeAdapter(ModelGateway):
@@ -74,21 +104,6 @@ class DashScopeAdapter(ModelGateway):
             )
             return result, usage
 
-        except (APITimeoutError, RateLimitError) as exc:
-            raise RetryableModelError(
-                f"Retryable DashScope error for {task}: {exc}",
-                details={"model": model, "correlation_id": correlation_id},
-            ) from exc
-        except APIError as exc:
-            # Treat most API errors as terminal for safety (bad prompt, auth, etc.)
-            raise TerminalModelError(
-                f"Terminal DashScope error for {task}: {exc}",
-                details={
-                    "model": model,
-                    "correlation_id": correlation_id,
-                    "status": getattr(exc, "status_code", None),
-                },
-            ) from exc
         except (json.JSONDecodeError, ValidationError) as exc:
             # Malformed structured output must never be accepted
             raise TerminalModelError(
@@ -96,7 +111,27 @@ class DashScopeAdapter(ModelGateway):
                 details={"correlation_id": correlation_id, "error": str(exc)},
             ) from exc
         except Exception as exc:  # pragma: no cover - safety
-            raise TerminalModelError(
-                f"Unexpected error calling DashScope for {task}",
-                details={"correlation_id": correlation_id},
+            raise _map_api_error(
+                exc, task=task, model=model, correlation_id=correlation_id
+            ) from exc
+
+    async def embed(self, *, text: str, correlation_id: str) -> tuple[list[float], ModelUsage]:
+        model = self.get_model_for_task(ModelTask.EMBED)
+        try:
+            response = await self._client.embeddings.create(
+                model=model,
+                input=text,
+                extra_headers={"x-correlation-id": correlation_id},
+            )
+            vector = list(response.data[0].embedding)
+            usage = ModelUsage(
+                model=model,
+                prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+                completion_tokens=0,
+                total_tokens=response.usage.total_tokens if response.usage else 0,
+            )
+            return vector, usage
+        except Exception as exc:  # pragma: no cover - safety
+            raise _map_api_error(
+                exc, task=ModelTask.EMBED, model=model, correlation_id=correlation_id
             ) from exc

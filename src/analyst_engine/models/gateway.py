@@ -75,3 +75,12 @@ class ModelGateway(ABC):
     def get_model_for_task(self, task: ModelTask) -> str:
         """Return the concrete model identifier for the task."""
         ...
+
+    @abstractmethod
+    async def embed(self, *, text: str, correlation_id: str) -> tuple[list[float], ModelUsage]:
+        """Embed text into a dense vector for archive retrieval.
+
+        Raises RetryableModelError or TerminalModelError on failure.
+        Must not persist state.
+        """
+        ...
