@@ -1,0 +1,5 @@
+Task: address PR #6 code review findings
+Summary: Fixed 3 findings from the ephemeral code-review agent's PENDING review (https://github.com/RavindraTarunokusumo/AgenticAnalyst/pull/6#pullrequestreview-4707648538): (1) stale-fetch race in handleSelectBrief - added a request-id ref guard; also fixed the same class of bug in handleCadenceChange, which the reviewer didn't flag but which the fix required to close fully. (2) citation href scheme validation - verified article URLs are canonicalized to http(s) at ingestion time (not currently exploitable), added the guard anyway as defense-in-depth. (3) docs/commands.md claimed a dev-server proxy that vite.config.ts never actually configured - added it rather than weakening the docs claim, since the documented workflow is the right one.
+Docs: N/A
+TODO: Session: UI / Brief Viewer (2026-07-15)
+Validation: npm run build/lint clean; full backend suite 248 passed, 2 skipped (unaffected, frontend-only change)
