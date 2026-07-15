@@ -9,7 +9,7 @@ from uuid import UUID
 from conftest import make_client, make_runtime, make_settings
 
 from analyst_engine.domain.models import Brief, Cadence, Embedding
-from analyst_engine.models.gateway import ModelUsage, TerminalModelError
+from analyst_engine.models.gateway import ModelUsage, RetryableModelError, TerminalModelError
 
 _BRIEF_ID = UUID("11111111-1111-1111-1111-111111111111")
 _RUN_ID = UUID("22222222-2222-2222-2222-222222222222")
@@ -121,6 +121,17 @@ def test_search_returns_503_when_provider_does_not_support_embeddings(monkeypatc
 
     assert response.status_code == 503
     assert "embeddings not supported" in response.json()["detail"]
+
+
+def test_search_returns_503_on_transient_embed_failure(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    runtime = make_runtime(make_settings())
+    runtime.gateway.embed = AsyncMock(side_effect=RetryableModelError("timeout"))
+    client = make_client(monkeypatch, runtime=runtime)
+
+    response = client.get("/archive/search", params={"q": "policy"})
+
+    assert response.status_code == 503
+    assert "temporarily unavailable" in response.json()["detail"]
 
 
 def test_search_returns_empty_list_when_no_embeddings_exist(monkeypatch) -> None:  # type: ignore[no-untyped-def]

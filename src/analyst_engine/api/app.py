@@ -18,7 +18,7 @@ from analyst_engine.api.readiness import ReadinessStatus, check_readiness
 from analyst_engine.config import Settings
 from analyst_engine.domain.models import Cadence, IngestionStatus, Source, SourceFeed
 from analyst_engine.ingestion.canonicalize import UrlValidationError, canonicalize_url
-from analyst_engine.models.gateway import TerminalModelError
+from analyst_engine.models.gateway import RetryableModelError, TerminalModelError
 from analyst_engine.persistence.engine import session_scope
 from analyst_engine.persistence.repositories import (
     get_articles_by_ids,
@@ -633,6 +633,12 @@ def create_app(
                 status_code=503,
                 detail="archive search unavailable: embeddings not supported by the "
                 "configured model provider",
+            ) from exc
+        except RetryableModelError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="archive search temporarily unavailable: embedding request failed, "
+                "try again",
             ) from exc
 
         async with session_scope(runtime.session_factory) as session:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
@@ -146,32 +147,41 @@ def _build_graph(
             correlation_id=str(state["correlation_id"]),
         )
         output = await _frontier_synthesis(gateway, inp)
+
+        # Best-effort: run the embed() network call before opening the DB
+        # transaction below, so a slow/failing provider call never holds a
+        # pooled connection + open transaction. A model-side failure here is
+        # swallowed the same way a DB-side save_embedding failure is below.
+        embedding_vector: list[float] | None = None
+        with suppress(Exception):
+            embedding_vector, _usage = await gateway.embed(
+                text=output.brief.content, correlation_id=inp.correlation_id
+            )
+
         async with session_scope(session_factory) as session:
             await save_narrative_version(session, output.proposed_narrative_version)
             for expectation in output.proposed_expectations:
                 await save_prediction_expectation(session, expectation)
             await save_brief(session, output.brief)
-            # Best-effort: a model-side embed() failure or a DB-side save_embedding
-            # flush failure must not roll back the already-flushed brief/narrative/
-            # expectations above. A plain try/except is not enough for the DB-side
-            # case: Postgres aborts the whole transaction on a failed statement, so
-            # the outer session.commit() in session_scope would then fail too. A
-            # SAVEPOINT (begin_nested) isolates either failure to just this block.
-            try:
-                async with session.begin_nested():
-                    vector, _usage = await gateway.embed(
-                        text=output.brief.content, correlation_id=inp.correlation_id
-                    )
-                    await save_embedding(
-                        session,
-                        Embedding(
-                            brief_id=output.brief.id,
-                            model=gateway.get_model_for_task(ModelTask.EMBED),
-                            vector=vector,
-                        ),
-                    )
-            except Exception:
-                pass
+            if embedding_vector is not None:
+                # A DB-side save_embedding flush failure must not roll back the
+                # already-flushed brief/narrative/expectations above. A plain
+                # try/except is not enough: Postgres aborts the whole
+                # transaction on a failed statement, so the outer
+                # session.commit() in session_scope would then fail too. A
+                # SAVEPOINT (begin_nested) isolates the failure to this block.
+                try:
+                    async with session.begin_nested():
+                        await save_embedding(
+                            session,
+                            Embedding(
+                                brief_id=output.brief.id,
+                                model=gateway.get_model_for_task(ModelTask.EMBED),
+                                vector=embedding_vector,
+                            ),
+                        )
+                except Exception:
+                    pass
         return {
             "brief": output.brief.model_dump(mode="python"),
             "proposed_narrative": output.proposed_narrative_version.model_dump(mode="python"),
