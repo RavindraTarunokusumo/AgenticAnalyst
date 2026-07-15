@@ -11,7 +11,7 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 Spec: `docs/superpowers/specs/2026-07-15-ui-brief-viewer-design.md`
 Plan: `docs/superpowers/plans/2026-07-15-ui-brief-viewer.md`
 
-- [ ] `frontend/` scaffold (Vite + React + TS + Tailwind)
+- [x] `frontend/` scaffold (Vite + React + TS + Tailwind)
 - [ ] API client module (`frontend/src/api.ts`)
 - [ ] Components: `CadenceTabs`, `BriefList`, `BriefDetail`, loading/empty/error states
 - [ ] App shell / state (`frontend/src/App.tsx`)
