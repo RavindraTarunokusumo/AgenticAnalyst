@@ -1,0 +1,5 @@
+Task: address PR #7 code review findings
+Summary: Fixed 2 of 3 findings from the ephemeral code-review agent (inline PR comments on #7): (1) RetryableModelError was unhandled in search_archive, now caught -> 503 with distinct messaging from the TerminalModelError case. (2) gateway.embed() moved outside session_scope entirely (not just outside begin_nested), so no DB connection/transaction is held during the network call. Pushed back on finding 3 (recompute cosine similarity in Python vs. select the SQL-computed distance) - see PR reply: negligible cost (50 results x 1536 floats), and changing search_embeddings_by_similarity's already-tested return contract for no measurable gain is not worth it.
+Docs: N/A
+TODO: Session: Archive Retrieval / Semantic Search (2026-07-15)
+Validation: ruff format/check, mypy clean; full suite 263 passed, 2 skipped (was 262, +1 for the new RetryableModelError test)
