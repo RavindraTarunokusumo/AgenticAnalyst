@@ -1,0 +1,5 @@
+Task: OpenRouterAdapter.embed()
+Summary: Implemented embed() as a one-line delegation to the existing get_model_for_task(ModelTask.EMBED) call, which already raises TerminalModelError('OpenRouter adapter does not support embeddings') unconditionally - no new rejection logic, no HTTP request ever reached. Added test_openrouter_embed_rejects_without_http_request asserting the same no-call guarantee already proven for generate(task=EMBED).
+Docs: N/A
+TODO: Session: Archive Retrieval / Semantic Search (2026-07-15) - OpenRouterAdapter.embed(), Tests: adapter embed (happy/error) (OpenRouter half)
+Validation: ruff format --check / ruff check (pass); mypy src tests (pass, 85 files, 0 errors); pytest full suite (249 passed, 1 skipped, matches pre-session baseline skip)
