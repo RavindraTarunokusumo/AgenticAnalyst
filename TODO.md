@@ -6,11 +6,13 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
-## Session: <Session Name> (<YYYY-MM-DD>)
+## Session: Eval Harness Parity Documentation (2026-07-15)
 
-- [ ] <sub-item 1>
-- [ ] <sub-item 2>
-- [ ] <sub-item 3>
+- [x] Document why `tests/evaluation/test_temporal_holdout.py` intentionally
+      drives `WorkflowRunner` directly instead of
+      `DailyBriefPipeline`/`PeriodicBriefPipeline` (chose the "document the
+      shortcut" branch over rerouting - rerouting would require new
+      corpus-to-Postgres seeding infra the suite doesn't otherwise have).
 
 ## Future Backlog
 
@@ -40,11 +42,3 @@ behind this ordering.
       initial migration (`docs/database.md`); no schema, no design started.
       Likely the largest single slice on this list - needs its own spec
       before scoping, not a quick follow-on.
-- [ ] **Evaluation-harness parity check.** `tests/evaluation/
-      test_temporal_holdout.py` (opt-in, excluded from routine CI) drives
-      `WorkflowRunner.run_daily/weekly/monthly` directly, bypassing
-      `DailyBriefPipeline`/`PeriodicBriefPipeline` entirely - it now exercises
-      a different code path than every production trigger (scheduler, API,
-      `/workflows/trigger`). Worth a small follow-up to route it through the
-      pipelines instead, or explicitly document why it intentionally
-      shortcuts them.

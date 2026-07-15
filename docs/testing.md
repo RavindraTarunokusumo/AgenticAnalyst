@@ -25,7 +25,14 @@ Core layers:
 - `tests/unit/` — domain, adapter (OpenRouter routing, process modes), repository lifecycle, workflow runner, graph, and runtime tests. Use fakes and mocks.
 - `tests/integration/` — persistence (workflow run create/update/idempotency), migration round-trips, checkpoint behavior, and concurrency (require Docker/Testcontainers or CI Postgres service; capability-aware skipping).
 - `tests/api/` — FastAPI liveness, readiness (200/503 + component shape), and trigger contract tests.
-- `tests/evaluation/` — opt-in temporal holdout evaluation (outside routine CI).
+- `tests/evaluation/` — opt-in temporal holdout evaluation (outside routine
+  CI). Drives `WorkflowRunner.run_daily/weekly/monthly` directly with no
+  corpus or evidence data, not `DailyBriefPipeline`/`PeriodicBriefPipeline`
+  (the path every production trigger uses, which does live ingestion,
+  batching, and summarization against Postgres) - intentional, see the
+  module docstring in `test_temporal_holdout.py` for why routing a real
+  corpus through the pipelines isn't a small change, and note that the test
+  is presently skip-only (not actually runnable if unskipped).
 
 ## Core Fixtures
 

@@ -1,4 +1,28 @@
-"""Opt-in temporal holdout test (marked to be excluded from CI)."""
+"""Opt-in temporal holdout test (marked to be excluded from CI).
+
+Parity note: this drives `WorkflowRunner.run_daily/weekly/monthly` directly,
+not `DailyBriefPipeline`/`PeriodicBriefPipeline` (the path every production
+trigger - scheduler, API, `/workflows/trigger` - actually uses). This is
+intentional, not an oversight: the pipelines do live ingestion, batching,
+and summarization against a real Postgres database before selecting
+evidence for a window, while this harness exercises the runner with no
+corpus or evidence data at all - the `corpus.jsonl` written in the test
+body is illustrative only and is never read back or parsed; `run_daily`/
+`run_weekly`/`run_monthly` are called with `batch_summaries=None`.
+Routing this through the pipelines would require building corpus-to-Postgres
+seeding (articles/batches/summaries) that doesn't exist anywhere else in
+the suite - a new capability, not a parity fix. If a real temporal
+evaluation harness is ever built, it should seed a corpus through
+`IngestionService`/`batch_articles`/`summarize_batch` into a real database
+and drive the pipelines, not extend this smoke test.
+
+Also note: this test is presently skip-only, not actually runnable via the
+"run manually outside CI" path its skip reason describes - `WorkflowRunner`
+is constructed here with `session_factory=None`, and every runner method
+opens `session_scope(self.session_factory)` on its first line, which calls
+`None()` and raises `TypeError` immediately. Removing the skip would not
+currently produce a working smoke run.
+"""
 
 # mypy: ignore-errors
 from dataclasses import dataclass
