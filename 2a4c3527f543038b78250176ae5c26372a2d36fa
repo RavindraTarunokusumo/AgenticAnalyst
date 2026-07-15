@@ -1,0 +1,5 @@
+Task: archive-retrieval docs
+Summary: Documented ModelGateway.embed() and its two adapters, the synthesize node's SAVEPOINT-wrapped best-effort embedding write, and the new GET /archive/search route in docs/architecture.md; added a changelog entry. No docs/database.md change needed (no schema change).
+Docs: docs/architecture.md, docs/changelog.md
+TODO: Session: Archive Retrieval / Semantic Search (2026-07-15)
+Validation: docs-only change, no code
