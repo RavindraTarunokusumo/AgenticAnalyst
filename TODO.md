@@ -48,7 +48,8 @@ Plan: `docs/superpowers/plans/2026-07-15-archive-retrieval.md`
       with route-level tests in the same commit (7 cases: happy path,
       cadence/limit passthrough, blank q, limit out of range, unknown
       cadence, 503 on TerminalModelError, empty results)
-- [ ] Tests: adapter embed (happy/error)
+- [x] Tests: adapter embed (happy/error) - landed in the DashScopeAdapter.embed()
+      and OpenRouterAdapter.embed() commits (`a444a9b`, `f95c6af`)
 - [x] Tests: best-effort swallow (brief persists despite embed failure) -
       landed in the same commit as the synthesize-node wiring above (mocked
       unit test + real-DB integration test)
