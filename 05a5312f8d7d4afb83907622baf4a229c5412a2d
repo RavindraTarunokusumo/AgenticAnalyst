@@ -1,0 +1,5 @@
+Task: synthesize-node best-effort embedding
+Summary: Added embed()+save_embedding() best-effort side effect after save_brief in the synthesize node, wrapped in a SAVEPOINT (session.begin_nested()) rather than the plan's plain try/except, since a DB-level save_embedding failure otherwise aborts the whole transaction and breaks session_scope's commit. Verified by temporarily reverting to the plain try/except and confirming the new integration test fails with PendingRollbackError, then restoring the fix.
+Docs: N/A (Task 9 covers docs)
+TODO: Session: Archive Retrieval / Semantic Search (2026-07-15) - includes a Scope note entry
+Validation: ruff format/check, mypy clean; 10 unit tests (test_workflow_graphs.py) + 4 integration tests (test_archive_retrieval.py, against live pgvector container) all passed
