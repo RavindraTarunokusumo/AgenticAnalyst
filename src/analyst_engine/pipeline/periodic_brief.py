@@ -23,6 +23,7 @@ from analyst_engine.workflows.runner import WorkflowRunner
 @dataclass(frozen=True)
 class PeriodicPipelineResult:
     cadence: Cadence
+    topic_id: UUID
     covered_start: date
     covered_end: date
     # Count of summaries newly selected THIS call. On an idempotent retry
@@ -68,7 +69,9 @@ class PeriodicBriefPipeline:
         self._runner = runner
         self._clock = clock
 
-    async def run(self, anchor_date: date | None = None) -> PeriodicPipelineResult:
+    async def run(
+        self, anchor_date: date | None = None, *, topic_id: UUID
+    ) -> PeriodicPipelineResult:
         anchor = anchor_date or self._clock().date()
         window_start, window_end = (
             _week_window(anchor) if self._cadence is Cadence.WEEKLY else _month_window(anchor)
@@ -77,7 +80,7 @@ class PeriodicBriefPipeline:
         selected: list[BatchSummary] = []
         async with session_scope(self._session_factory) as session:
             candidates = await list_eligible_batch_summaries_for_window(
-                session, window_start, window_end
+                session, window_start, window_end, topic_id=topic_id
             )
             for candidate in candidates:
                 already_cited = await is_batch_summary_cited(
@@ -99,7 +102,8 @@ class PeriodicBriefPipeline:
             # to the runner so its own idempotency-key lookup returns it
             # directly, mirroring DailyBriefPipeline's exact pattern.
             idempotency_key = (
-                f"{self._cadence.value}:{window_start.isoformat()}:{window_end.isoformat()}"
+                f"{self._cadence.value}:{topic_id}:"
+                f"{window_start.isoformat()}:{window_end.isoformat()}"
             )
             async with session_scope(self._session_factory) as session:
                 existing_run = await get_workflow_run_by_idempotency(session, idempotency_key)
@@ -109,6 +113,7 @@ class PeriodicBriefPipeline:
             ):
                 return PeriodicPipelineResult(
                     cadence=self._cadence,
+                    topic_id=topic_id,
                     covered_start=window_start,
                     covered_end=window_end,
                     summaries_selected=0,
@@ -120,20 +125,29 @@ class PeriodicBriefPipeline:
 
         workflow_run: WorkflowRun
         if self._cadence is Cadence.WEEKLY:
-            workflow_run = await self._runner.run_weekly(window_start, batch_summaries=selected)
+            workflow_run = await self._runner.run_weekly(
+                window_start, topic_id=topic_id, batch_summaries=selected
+            )
         else:
-            workflow_run = await self._runner.run_monthly(window_start, batch_summaries=selected)
+            workflow_run = await self._runner.run_monthly(
+                window_start, topic_id=topic_id, batch_summaries=selected
+            )
 
         brief_id: UUID | None = None
         if workflow_run.status is WorkflowStatus.SUCCEEDED:
             async with session_scope(self._session_factory) as session:
                 brief = await get_brief_by_cadence_interval(
-                    session, self._cadence, window_start, window_end
+                    session,
+                    self._cadence,
+                    window_start,
+                    window_end,
+                    topic_id=topic_id,
                 )
                 brief_id = brief.id if brief is not None else None
 
         return PeriodicPipelineResult(
             cadence=self._cadence,
+            topic_id=topic_id,
             covered_start=window_start,
             covered_end=window_end,
             summaries_selected=len(selected),

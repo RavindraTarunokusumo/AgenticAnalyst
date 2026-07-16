@@ -6,6 +6,7 @@ from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager, suppress
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -63,8 +64,10 @@ class WorkflowRunner:
         self.session_factory = session_factory
         self.checkpointer_factory = checkpointer_factory
 
-    async def _ensure_run(self, cadence: Cadence, start: date, end: date) -> WorkflowRun:
-        key = f"{cadence.value}:{start.isoformat()}:{end.isoformat()}"
+    async def _ensure_run(
+        self, cadence: Cadence, topic_id: UUID, start: date, end: date
+    ) -> WorkflowRun:
+        key = f"{cadence.value}:{topic_id}:{start.isoformat()}:{end.isoformat()}"
         try:
             async with session_scope(self.session_factory) as session:
                 existing = await get_workflow_run_by_idempotency(session, key)
@@ -93,7 +96,7 @@ class WorkflowRunner:
             return await claim_pending_workflow_run(session, candidate)
 
     async def _load_context(
-        self, cadence: Cadence, start: date
+        self, cadence: Cadence, topic_id: UUID, start: date
     ) -> tuple[NarrativeStateVersion | None, list[Brief]]:
         prior_cadence = {
             Cadence.DAILY: Cadence.DAILY,
@@ -103,7 +106,7 @@ class WorkflowRunner:
         async with session_scope(self.session_factory) as session:
             return (
                 await get_narrative_version_as_of(session, start),
-                await list_prior_briefs(session, prior_cadence, start),
+                await list_prior_briefs(session, prior_cadence, start, topic_id=topic_id),
             )
 
     @staticmethod
@@ -115,11 +118,12 @@ class WorkflowRunner:
     async def _execute(
         self,
         cadence: Cadence,
+        topic_id: UUID,
         start: date,
         end: date,
         batch_summaries: list[BatchSummary] | None,
     ) -> WorkflowRun:
-        run = await self._ensure_run(cadence, start, end)
+        run = await self._ensure_run(cadence, topic_id, start, end)
         if run.status in _TERMINAL_STATUSES:
             return run
         if run.status is WorkflowStatus.RUNNING:
@@ -135,10 +139,11 @@ class WorkflowRunner:
             return claimed_elsewhere
 
         try:
-            current_narrative, prior_briefs = await self._load_context(cadence, start)
+            current_narrative, prior_briefs = await self._load_context(cadence, topic_id, start)
             state = {
                 "run_id": str(run.id),
                 "cadence": cadence.value,
+                "topic_id": str(topic_id),
                 "covered_start": start.isoformat(),
                 "covered_end": end.isoformat(),
                 "idempotency_key": run.idempotency_key,
@@ -156,7 +161,7 @@ class WorkflowRunner:
             config = {
                 "configurable": {
                     "thread_id": str(run.id),
-                    "checkpoint_ns": cadence.value,
+                    "checkpoint_ns": f"{cadence.value}:{topic_id}",
                 }
             }
             builder = GRAPH_BUILDERS[cadence](self.gateway, self.session_factory)
@@ -187,27 +192,30 @@ class WorkflowRunner:
         self,
         target_date: date | None = None,
         *,
+        topic_id: UUID,
         batch_summaries: list[BatchSummary] | None = None,
     ) -> WorkflowRun:
         target = target_date or date.today()
-        return await self._execute(Cadence.DAILY, target, target, batch_summaries)
+        return await self._execute(Cadence.DAILY, topic_id, target, target, batch_summaries)
 
     async def run_weekly(
         self,
         target_date: date | None = None,
         *,
+        topic_id: UUID,
         batch_summaries: list[BatchSummary] | None = None,
     ) -> WorkflowRun:
         today = date.today()
         start = target_date or (today - timedelta(days=today.weekday()))
         return await self._execute(
-            Cadence.WEEKLY, start, start + timedelta(days=6), batch_summaries
+            Cadence.WEEKLY, topic_id, start, start + timedelta(days=6), batch_summaries
         )
 
     async def run_monthly(
         self,
         target_date: date | None = None,
         *,
+        topic_id: UUID,
         batch_summaries: list[BatchSummary] | None = None,
     ) -> WorkflowRun:
         start = target_date or date.today().replace(day=1)
@@ -218,6 +226,7 @@ class WorkflowRunner:
         )
         return await self._execute(
             Cadence.MONTHLY,
+            topic_id,
             start,
             next_month - timedelta(days=1),
             batch_summaries,

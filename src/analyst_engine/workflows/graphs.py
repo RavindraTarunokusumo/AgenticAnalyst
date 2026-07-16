@@ -94,6 +94,7 @@ async def _frontier_synthesis(
         created_at=datetime.now(UTC),
     )
     brief = Brief(
+        topic_id=inp.topic_id,
         cadence=inp.cadence,
         covered_start=inp.covered_start,
         covered_end=inp.covered_end,
@@ -139,6 +140,7 @@ def _build_graph(
         )
         inp = BriefGenerationInput(
             cadence=cadence,
+            topic_id=UUID(str(state["topic_id"])),
             covered_start=date.fromisoformat(str(state["covered_start"])),
             covered_end=date.fromisoformat(str(state["covered_end"])),
             batch_summaries=summaries,

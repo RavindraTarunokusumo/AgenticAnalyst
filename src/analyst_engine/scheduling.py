@@ -27,7 +27,9 @@ async def register_schedules(
         return
 
     async def _run_daily_pipeline() -> None:
-        await pipeline.run(date.today())
+        # T7: iterate topics and call run(..., topic_id=...). Signature
+        # requires topic_id (T6); scheduler iteration is owned by T7.
+        await pipeline.run(date.today())  # type: ignore[call-arg]
 
     async def _run_weekly_pipeline() -> None:
         # CronTrigger fires on local time; passing local date.today() (rather
@@ -35,10 +37,12 @@ async def register_schedules(
         # clock) keeps the job's window normalization aligned with the local
         # instant the job actually fired at, avoiding a wrong-day window near
         # midnight in timezones offset enough from UTC.
-        await weekly_pipeline.run(date.today())
+        # T7: iterate topics and pass topic_id.
+        await weekly_pipeline.run(date.today())  # type: ignore[call-arg]
 
     async def _run_monthly_pipeline() -> None:
-        await monthly_pipeline.run(date.today())
+        # T7: iterate topics and pass topic_id.
+        await monthly_pipeline.run(date.today())  # type: ignore[call-arg]
 
     # Daily at 02:00 local
     scheduler.add_job(
