@@ -20,6 +20,7 @@ dependencies = [
     "pydantic-settings>=2.7",
     "playwright>=1.52",
     "psycopg[binary]>=3.2",
+    "pypdf>=5.0",
     "sqlalchemy[asyncio]>=2.0",
     "uvicorn[standard]>=0.29",
 ]
