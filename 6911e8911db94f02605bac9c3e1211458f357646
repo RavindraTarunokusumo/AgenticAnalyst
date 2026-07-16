@@ -1,0 +1,5 @@
+Task: FileExtractor protocol
+Summary: Added FileExtractor protocol with PdfFileExtractor (pypdf) and TextFileExtractor (UTF-8 decode) implementations, both raising FileExtractionError on no usable text.
+Docs: N/A
+TODO: Backend chain - FileExtractor
+Validation: mypy
