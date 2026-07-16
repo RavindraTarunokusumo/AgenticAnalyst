@@ -1,0 +1,5 @@
+Task: API key settings
+Summary: ApiKeySettings.tsx lets a user view/replace the client-held API key after onboarding.
+Docs: N/A
+TODO: Frontend chain - API key settings
+Validation: npm run build
