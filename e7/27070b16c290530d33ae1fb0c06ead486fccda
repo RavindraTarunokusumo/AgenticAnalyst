@@ -1,0 +1,5 @@
+Task: backlog item grounding
+Summary: Added the code-inspection findings (no topic-aware filtering anywhere in the pipeline; SearXNG provisioned but unwired) and a SearXNG-based discovery option to the onboarding-personalization Future Backlog item, per user follow-up question.
+Docs: TODO.md
+TODO: N/A (docs-only)
+Validation: docs-only change, no code
