@@ -83,6 +83,76 @@ def test_post_ingestion_urls_requires_auth_and_maps_results(monkeypatch) -> None
     )
 
 
+def test_post_ingestion_files_requires_auth_and_maps_result(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    ingestion_service = Mock(
+        ingest_file=AsyncMock(
+            return_value=IngestionResult(
+                candidate_url="upload://deadbeef",
+                status=IngestionStatus.SUCCEEDED,
+                article_id=_ARTICLE_ID,
+                error_code=None,
+                error_summary=None,
+            )
+        )
+    )
+    client = make_client(
+        monkeypatch,
+        allow_unauthenticated_write=False,
+        ingestion_service=ingestion_service,
+    )
+
+    unauthenticated = client.post(
+        "/ingestion/files",
+        data={"source_id": str(_SOURCE_ID)},
+        files={"file": ("report.pdf", b"pdf bytes", "application/pdf")},
+    )
+    assert unauthenticated.status_code == 401
+    ingestion_service.ingest_file.assert_not_awaited()
+
+    authenticated = client.post(
+        "/ingestion/files",
+        headers={"X-API-Key": "test-secret"},
+        data={"source_id": str(_SOURCE_ID)},
+        files={"file": ("report.pdf", b"pdf bytes", "application/pdf")},
+    )
+
+    assert authenticated.status_code == 200
+    assert authenticated.json() == {
+        "candidate_url": "upload://deadbeef",
+        "status": "succeeded",
+        "article_id": str(_ARTICLE_ID),
+        "error_code": None,
+        "error_summary": None,
+    }
+    ingestion_service.ingest_file.assert_awaited_once_with(
+        _SOURCE_ID, "report.pdf", b"pdf bytes", "application/pdf"
+    )
+
+
+def test_post_ingestion_files_rejects_oversized_upload_without_calling_service(
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    ingestion_service = Mock(ingest_file=AsyncMock())
+    client = make_client(
+        monkeypatch,
+        allow_unauthenticated_write=True,
+        ingestion_service=ingestion_service,
+    )
+    client.app.state.runtime.settings.article_max_response_size_bytes = 4  # type: ignore[attr-defined]
+
+    response = client.post(
+        "/ingestion/files",
+        data={"source_id": str(_SOURCE_ID)},
+        files={"file": ("report.pdf", b"way more than four bytes", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "failed"
+    assert body["error_code"] == "file_too_large"
+    ingestion_service.ingest_file.assert_not_awaited()
+
+
 def test_get_ingestion_attempts_returns_recent_attempts(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     started = datetime(2026, 7, 14, 10, 0, tzinfo=UTC)
     attempt = IngestionAttempt(

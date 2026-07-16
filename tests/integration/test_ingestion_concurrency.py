@@ -180,6 +180,7 @@ async def test_concurrent_duplicate_url_ingestion_records_one_article_and_mixed_
         primary_extractor=_RaceExtractor(),
         fallback_extractor=_RaceExtractor(),
         settings=test_settings,
+        file_extractors={},
         clock=lambda: datetime(2026, 7, 14, 12, 0, tzinfo=UTC),
     )
 
