@@ -57,6 +57,11 @@ export function AddContentPanel({ apiKey, source, onSubmitted }: AddContentPanel
       setPanelError('Choose a file to upload.')
       return
     }
+    const urls = mode === 'links' ? parseUrls(linksInput) : []
+    if (mode === 'links' && urls.length === 0) {
+      setPanelError('Enter at least one URL.')
+      return
+    }
 
     setPanelError(null)
     setResults([])
@@ -64,7 +69,6 @@ export function AddContentPanel({ apiKey, source, onSubmitted }: AddContentPanel
     setSubmitting(true)
     try {
       if (mode === 'links') {
-        const urls = parseUrls(linksInput)
         setResults(await ingestUrls(apiKey, source.id, urls))
       } else if (mode === 'feed') {
         const updated = await registerSource(apiKey, {

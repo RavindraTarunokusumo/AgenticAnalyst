@@ -1,7 +1,7 @@
 import type { IngestionResult } from '../api'
 
 const STATUS_STYLES: Record<string, string> = {
-  success: 'bg-green-50 text-green-700',
+  succeeded: 'bg-green-50 text-green-700',
   duplicate: 'bg-amber-50 text-amber-700',
   failed: 'bg-red-50 text-red-700',
 }
