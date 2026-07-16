@@ -1,0 +1,5 @@
+Task: Onboarding + gating
+Summary: Onboarding.tsx registers a default source + optional feed and persists the API key to localStorage; App.tsx gates the 3-panel view behind at least one registered source.
+Docs: N/A
+TODO: Frontend chain - Onboarding
+Validation: npm run build
