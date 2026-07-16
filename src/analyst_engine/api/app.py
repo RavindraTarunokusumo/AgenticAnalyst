@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Security, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
@@ -443,6 +443,36 @@ def create_app(
             )
             for result in results
         ]
+
+    @app.post("/ingestion/files", response_model=IngestionResultResponse)
+    async def ingest_file_route(
+        source_id: UUID = Form(...),
+        file: UploadFile = File(...),
+        _key: str = Depends(_require_key),
+    ) -> IngestionResultResponse:
+        runtime: RuntimeDependencies = app.state.runtime
+        content = await file.read()
+        if len(content) > runtime.settings.article_max_response_size_bytes:
+            return IngestionResultResponse(
+                candidate_url=file.filename or "upload",
+                status=IngestionStatus.FAILED.value,
+                article_id=None,
+                error_code="file_too_large",
+                error_summary=(
+                    f"file size {len(content)} exceeds maximum "
+                    f"{runtime.settings.article_max_response_size_bytes} bytes"
+                ),
+            )
+        result = await app.state.ingestion_service.ingest_file(
+            source_id, file.filename or "upload", content, file.content_type or ""
+        )
+        return IngestionResultResponse(
+            candidate_url=result.candidate_url,
+            status=result.status.value,
+            article_id=result.article_id,
+            error_code=result.error_code,
+            error_summary=result.error_summary,
+        )
 
     @app.get("/ingestion/attempts", response_model=list[IngestionAttemptResponse])
     async def get_ingestion_attempts(
