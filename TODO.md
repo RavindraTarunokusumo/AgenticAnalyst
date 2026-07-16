@@ -75,7 +75,16 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
       the 3rd. ORM `nullable=True`; migration upgrade/downgrade mirror
       `article.source_id`; Postgres-backed repository round-trip test added.
 - [x] **T6** Pipeline scoping — `list_eligible_unbatched_articles` **and**
-      `list_due_source_feeds` gain `topic_id` (spec §4.1); per-topic runs — `list_eligible_unbatched_articles` **and**
+      `list_due_source_feeds` gain `topic_id` (spec §4.1); per-topic runs
+      (`d29d35b`, `ecf3e17`, `b69076a`, `709dfb9`)
+      - [x] Repo: topic_id on list_due_source_feeds (join source) +
+            list_eligible_unbatched_articles; brief mappers; unique index
+            per topic (`d29d35b`)
+      - [x] Pipelines + runner/graphs stamp Brief.topic_id; idempotency
+            keys include topic_id (`ecf3e17`)
+      - [x] API pipeline/trigger routes pass topic_id (`b69076a`)
+      - [x] Shared test helpers; dual-topic briefs + §4.1 poll starvation
+            regression (`709dfb9`) — `list_eligible_unbatched_articles` **and**
       `list_due_source_feeds` gain `topic_id` (spec §4.1); per-topic runs
 - [ ] **T7** Scheduler iterates topics (R5: cadence stays the only trigger)
 - [ ] **T8** `ModelTask.TOPIC_ASSIST` + `topics/prompts.py`
