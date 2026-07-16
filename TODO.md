@@ -62,17 +62,18 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
             (`cfc7114`, `ec266aa`)
       - [x] Unit tests: stage-1 no-fetch, stage-2 drop, attempt recorded,
             on-topic pass, direct-add topic_id + unfiltered (`9b4482c`)
-- [ ] **T5b** Make `ingestion_attempt.source_id` nullable — *added mid-session
-      (Rule 2).* T5 made the domain `IngestionAttempt.source_id` optional for
-      source-less adds, but the ORM column and T2's migration left it
-      `NOT NULL`. Proven against a real Postgres: inserting a source-less
+- [x] **T5b** Make `ingestion_attempt.source_id` nullable (`2f319b2`) — *added
+      mid-session (Rule 2).* T5 made the domain `IngestionAttempt.source_id`
+      optional for source-less adds, but the ORM column and T2's migration left
+      it `NOT NULL`. Proven against a real Postgres: inserting a source-less
       attempt fails with a not-null violation, so `ingest_urls`/`ingest_file`
       (R4 — pasted links and uploads) would crash on any real database.
       Invisible to T5's unit tests, which fake persistence. Grok flagged the
       mismatch in its own T5 note but left it unfixed. Fold into revision
       `00f3ae192a5a` (unpushed, and already the "source-less records"
       migration) rather than adding a 4th revision that immediately corrects
-      the 3rd.
+      the 3rd. ORM `nullable=True`; migration upgrade/downgrade mirror
+      `article.source_id`; Postgres-backed repository round-trip test added.
 - [ ] **T6** Pipeline scoping — `list_eligible_unbatched_articles` **and**
       `list_due_source_feeds` gain `topic_id` (spec §4.1); per-topic runs
 - [ ] **T7** Scheduler iterates topics (R5: cadence stays the only trigger)
