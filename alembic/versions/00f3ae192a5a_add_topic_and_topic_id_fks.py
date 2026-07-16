@@ -97,9 +97,28 @@ def upgrade() -> None:
         nullable=True,
     )
 
+    # Briefs are one-per-topic-per-cadence-per-window (spec §4). The initial
+    # schema used unique index ix_brief_cadence_interval (not a table unique
+    # constraint). Replace it so two topics may brief the same date.
+    op.drop_index("ix_brief_cadence_interval", table_name="brief")
+    op.create_index(
+        "ix_brief_topic_cadence_interval",
+        "brief",
+        ["topic_id", "cadence", "covered_start", "covered_end"],
+        unique=True,
+    )
+
 
 def downgrade() -> None:
     """Reverse topic_id columns and the topic table."""
+    op.drop_index("ix_brief_topic_cadence_interval", table_name="brief")
+    op.create_index(
+        "ix_brief_cadence_interval",
+        "brief",
+        ["cadence", "covered_start", "covered_end"],
+        unique=True,
+    )
+
     op.alter_column(
         "ingestion_attempt",
         "source_id",

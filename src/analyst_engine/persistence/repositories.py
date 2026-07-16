@@ -240,6 +240,7 @@ def _summary_to_domain(row: ORMBatchSummary) -> BatchSummary:
 def _brief_to_domain(row: ORMBrief) -> Brief:
     return Brief(
         id=row.id,
+        topic_id=row.topic_id,
         cadence=Cadence(row.cadence),
         covered_start=row.covered_start,
         covered_end=row.covered_end,
@@ -296,6 +297,7 @@ def _summary_to_orm(s: BatchSummary) -> ORMBatchSummary:
 def _brief_to_orm(b: Brief) -> ORMBrief:
     return ORMBrief(
         id=b.id,
+        topic_id=b.topic_id,
         cadence=b.cadence.value,
         covered_start=b.covered_start,
         covered_end=b.covered_end,
@@ -722,34 +724,26 @@ async def get_narrative_version_as_of(
     )
 
 
-async def list_prior_briefs(session: AsyncSession, cadence: Cadence, before: date) -> list[Brief]:
+async def list_prior_briefs(
+    session: AsyncSession,
+    cadence: Cadence,
+    before: date,
+    *,
+    topic_id: uuid.UUID | None = None,
+) -> list[Brief]:
+    conditions = [ORMBrief.cadence == cadence.value, ORMBrief.covered_end < before]
+    if topic_id is not None:
+        conditions.append(ORMBrief.topic_id == topic_id)
     rows = (
         (
             await session.execute(
-                select(ORMBrief)
-                .where(ORMBrief.cadence == cadence.value, ORMBrief.covered_end < before)
-                .order_by(ORMBrief.covered_end.desc())
-                .limit(31)
+                select(ORMBrief).where(*conditions).order_by(ORMBrief.covered_end.desc()).limit(31)
             )
         )
         .scalars()
         .all()
     )
-    return [
-        Brief(
-            id=row.id,
-            cadence=Cadence(row.cadence),
-            covered_start=row.covered_start,
-            covered_end=row.covered_end,
-            content=row.content,
-            cited_batch_summary_ids=list(row.cited_batch_summary_ids),
-            cited_article_ids=list(row.cited_article_ids),
-            narrative_state_version_id=row.narrative_state_version_id,
-            created_by_run_id=row.created_by_run_id,
-            created_at=row.created_at,
-        )
-        for row in rows
-    ]
+    return [_brief_to_domain(row) for row in rows]
 
 
 async def save_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun:
@@ -772,11 +766,17 @@ async def get_workflow_run_by_idempotency(
 
 
 async def get_brief_by_cadence_interval(
-    session: AsyncSession, cadence: Cadence, start: date, end: date
+    session: AsyncSession,
+    cadence: Cadence,
+    start: date,
+    end: date,
+    *,
+    topic_id: uuid.UUID,
 ) -> Brief | None:
     row = (
         await session.execute(
             select(ORMBrief).where(
+                ORMBrief.topic_id == topic_id,
                 ORMBrief.cadence == cadence.value,
                 ORMBrief.covered_start == start,
                 ORMBrief.covered_end == end,
@@ -785,18 +785,7 @@ async def get_brief_by_cadence_interval(
     ).scalar_one_or_none()
     if row is None:
         return None
-    return Brief(
-        id=row.id,
-        cadence=cadence,
-        covered_start=row.covered_start,
-        covered_end=row.covered_end,
-        content=row.content,
-        cited_batch_summary_ids=list(row.cited_batch_summary_ids or []),
-        cited_article_ids=list(row.cited_article_ids or []),
-        narrative_state_version_id=row.narrative_state_version_id,
-        created_by_run_id=row.created_by_run_id,
-        created_at=row.created_at,
-    )
+    return _brief_to_domain(row)
 
 
 async def list_batch_summaries_for_brief(
@@ -873,7 +862,15 @@ async def get_source_feed_by_fingerprint(
     return _source_feed_to_domain(row)
 
 
-async def list_due_source_feeds(session: AsyncSession, now: datetime) -> list[SourceFeed]:
+async def list_due_source_feeds(
+    session: AsyncSession, now: datetime, *, topic_id: uuid.UUID
+) -> list[SourceFeed]:
+    """Return due feeds whose source belongs to ``topic_id`` (spec §4.1).
+
+    Topic-scoping is mandatory: a global poll would update every feed's
+    ``last_polled_at`` during the first topic's run, so later topics in the
+    same cycle would find their feeds not-due and ingest nothing.
+    """
     poll_due_at = ORMSourceFeed.last_polled_at + (
         ORMSourceFeed.poll_interval_minutes * literal_column("INTERVAL '1 minute'")
     )
@@ -881,7 +878,9 @@ async def list_due_source_feeds(session: AsyncSession, now: datetime) -> list[So
         (
             await session.execute(
                 select(ORMSourceFeed)
+                .join(ORMSource, ORMSource.id == ORMSourceFeed.source_id)
                 .where(
+                    ORMSource.topic_id == topic_id,
                     ORMSourceFeed.enabled.is_(True),
                     or_(ORMSourceFeed.last_polled_at.is_(None), poll_due_at <= now),
                 )
@@ -999,7 +998,11 @@ async def get_article_by_fingerprint(session: AsyncSession, fingerprint: str) ->
 
 
 async def list_eligible_unbatched_articles(
-    session: AsyncSession, before_date: date, languages: list[str]
+    session: AsyncSession,
+    before_date: date,
+    languages: list[str],
+    *,
+    topic_id: uuid.UUID,
 ) -> list[Article]:
     if not languages:
         return []
@@ -1014,6 +1017,7 @@ async def list_eligible_unbatched_articles(
             await session.execute(
                 select(ORMArticle)
                 .where(
+                    ORMArticle.topic_id == topic_id,
                     ORMArticle.published_at < published_before,
                     ORMArticle.language.in_(languages),
                     ~batched,
@@ -1032,9 +1036,13 @@ async def list_eligible_unbatched_articles(
 
 
 async def list_eligible_batch_summaries_for_window(
-    session: AsyncSession, window_start: date, window_end: date
+    session: AsyncSession,
+    window_start: date,
+    window_end: date,
+    *,
+    topic_id: uuid.UUID,
 ) -> list[BatchSummary]:
-    """Batch summaries whose batch has >=1 article published within [window_start, window_end]."""
+    """Batch summaries whose batch has >=1 article for topic in [window_start, window_end]."""
 
     window_start_dt = datetime.combine(window_start, time.min, tzinfo=UTC)
     window_end_dt = datetime.combine(window_end + timedelta(days=1), time.min, tzinfo=UTC)
@@ -1044,6 +1052,7 @@ async def list_eligible_batch_summaries_for_window(
         .where(
             ORMArticleBatch.id == ORMBatchSummary.batch_id,
             ORMArticle.id == any_(ORMArticleBatch.article_ids),
+            ORMArticle.topic_id == topic_id,
             ORMArticle.published_at >= window_start_dt,
             ORMArticle.published_at < window_end_dt,
         )

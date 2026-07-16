@@ -231,8 +231,15 @@ class Brief(Base):
 
     __table_args__ = (
         sa.ForeignKeyConstraint(["topic_id"], ["topic.id"], ondelete="RESTRICT"),
-        sa.UniqueConstraint(
-            "cadence", "covered_start", "covered_end", name="uq_brief_cadence_interval"
+        # Per-topic briefs: same cadence/window may exist once per topic (spec §4).
+        # Named as an index to match the initial schema's unique-index style.
+        sa.Index(
+            "ix_brief_topic_cadence_interval",
+            "topic_id",
+            "cadence",
+            "covered_start",
+            "covered_end",
+            unique=True,
         ),
     )
 
