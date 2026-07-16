@@ -1,12 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BriefDetail as BriefDetailData, BriefListItem, Cadence, Source } from './api'
-import { fetchBriefDetail, fetchBriefList, fetchSources } from './api'
+import type {
+  BriefDetail as BriefDetailData,
+  BriefListItem,
+  Cadence,
+  IngestionAttempt,
+  Source,
+} from './api'
+import { fetchBriefDetail, fetchBriefList, fetchIngestionAttempts, fetchSources } from './api'
+import { AddContentPanel } from './components/AddContentPanel'
+import { ApiKeySettings } from './components/ApiKeySettings'
 import { BriefDetail } from './components/BriefDetail'
 import { BriefList } from './components/BriefList'
 import { CadenceTabs } from './components/CadenceTabs'
 import { ErrorState } from './components/ErrorState'
 import { LoadingState } from './components/LoadingState'
 import { Onboarding } from './components/Onboarding'
+import { RecentActivityList } from './components/RecentActivityList'
 
 function App() {
   const [cadence, setCadence] = useState<Cadence>('daily')
@@ -23,6 +32,24 @@ function App() {
   const [sources, setSources] = useState<Source[] | null>(null)
   const [sourcesLoading, setSourcesLoading] = useState(true)
   const [sourcesError, setSourcesError] = useState<string | null>(null)
+  const [apiKey, setApiKey] = useState<string | null>(() => localStorage.getItem('ae_api_key'))
+
+  const [attempts, setAttempts] = useState<IngestionAttempt[] | null>(null)
+  const [attemptsLoading, setAttemptsLoading] = useState(true)
+  const [attemptsError, setAttemptsError] = useState<string | null>(null)
+
+  function refetchAttempts() {
+    setAttemptsLoading(true)
+    setAttemptsError(null)
+    fetchIngestionAttempts()
+      .then(setAttempts)
+      .catch((err: unknown) => {
+        setAttemptsError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => {
+        setAttemptsLoading(false)
+      })
+  }
 
   // Gates the normal 3-panel view behind at least one registered source
   // (spec §3.1) - runs once on mount, not on cadence/selection changes.
@@ -43,11 +70,18 @@ function App() {
     }
   }, [])
 
-  // The api key itself is threaded into App state in Task 11's wiring, once
-  // AddContentPanel/ApiKeySettings exist to consume it; Onboarding has
-  // already persisted it to localStorage by the time this fires.
-  function handleOnboarded(source: Source, _apiKey: string) {
+  useEffect(() => {
+    refetchAttempts()
+  }, [])
+
+  function handleOnboarded(source: Source, registeredApiKey: string) {
     setSources([source])
+    setApiKey(registeredApiKey)
+  }
+
+  function handleApiKeySave(key: string) {
+    localStorage.setItem('ae_api_key', key)
+    setApiKey(key)
   }
 
   // Re-fetch the list whenever the active cadence tab changes; the currently
@@ -105,8 +139,9 @@ function App() {
   }
 
   const header = (
-    <header className="border-b border-slate-200 px-6 py-4">
+    <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
       <h1 className="text-xl font-semibold">AnalystEngine Briefs</h1>
+      <ApiKeySettings apiKey={apiKey} onSave={handleApiKeySave} />
     </header>
   )
 
@@ -157,6 +192,22 @@ function App() {
 
         <section className="rounded-md border border-slate-200 p-4">
           <BriefDetail brief={selectedBrief} loading={detailLoading} error={detailError} />
+        </section>
+      </main>
+
+      <main className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-6 pb-6 md:grid-cols-2">
+        <section className="rounded-md border border-slate-200 p-4">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">Add content</h2>
+          {apiKey !== null && sources !== null && sources.length > 0 ? (
+            <AddContentPanel apiKey={apiKey} source={sources[0]} onSubmitted={refetchAttempts} />
+          ) : (
+            <p className="text-sm text-slate-500">Set an API key to add content.</p>
+          )}
+        </section>
+
+        <section className="rounded-md border border-slate-200">
+          <h2 className="px-3 pt-3 text-sm font-semibold text-slate-900">Recent activity</h2>
+          <RecentActivityList attempts={attempts} loading={attemptsLoading} error={attemptsError} />
         </section>
       </main>
     </div>
