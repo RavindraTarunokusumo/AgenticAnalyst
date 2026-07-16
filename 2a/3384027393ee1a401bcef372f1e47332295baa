@@ -1,0 +1,5 @@
+Task: code review response - backend fixes
+Summary: Verified and fixed 3 of 4 backend findings from an independent code-review subagent (broad exception handling in ingest_file's extraction, file_too_large attempt-recording gap, content-type/extension fallback). Pushed back on a 4th (redundant sha256 computation) as low-value.
+Docs: N/A
+TODO: N/A (post-PR review response)
+Validation: pytest tests/unit tests/api tests/integration, mypy, ruff (all re-run clean)
