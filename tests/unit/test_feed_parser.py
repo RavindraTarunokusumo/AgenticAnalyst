@@ -56,6 +56,7 @@ def test_parse_rss_feed_returns_three_ordered_candidates() -> None:
     assert candidates[0].source_feed_id == _SOURCE_FEED_ID
     assert candidates[0].entry_id == "guid-a"
     assert candidates[0].published_at == datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC)
+    assert candidates[0].summary is None
 
 
 def test_parse_atom_feed_returns_candidates() -> None:
@@ -80,6 +81,70 @@ def test_parse_atom_feed_returns_candidates() -> None:
     assert candidates[0].author == "Bob"
     assert candidates[0].entry_id == "urn:uuid:atom-1"
     assert candidates[0].published_at == datetime(2024, 2, 1, 8, 30, 0, tzinfo=UTC)
+    assert candidates[0].summary is None
+
+
+def test_parse_rss_populates_summary_from_description() -> None:
+    raw = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example</title>
+    <item>
+      <title>Talks collapse in Geneva</title>
+      <link>https://example.com/talks</link>
+      <guid>guid-talks</guid>
+      <description>Diplomats leave after Iran nuclear talks break down.</description>
+      <pubDate>Mon, 01 Jan 2024 10:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
+"""
+
+    candidates = parse_feed(raw, _FEED_URL, _SOURCE_ID)
+
+    assert len(candidates) == 1
+    assert candidates[0].summary == "Diplomats leave after Iran nuclear talks break down."
+
+
+def test_parse_atom_populates_summary_from_summary_element() -> None:
+    raw = b"""<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Atom Example</title>
+  <entry>
+    <title>Talks collapse in Geneva</title>
+    <link href="https://example.com/atom-talks"/>
+    <id>urn:uuid:atom-talks</id>
+    <summary>Diplomats leave after Iran nuclear talks break down.</summary>
+    <published>2024-02-01T08:30:00Z</published>
+  </entry>
+</feed>
+"""
+
+    candidates = parse_feed(raw, _FEED_URL, _SOURCE_ID)
+
+    assert len(candidates) == 1
+    assert candidates[0].summary == "Diplomats leave after Iran nuclear talks break down."
+
+
+def test_parse_feed_absent_summary_yields_none() -> None:
+    raw = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example</title>
+    <item>
+      <title>No Summary</title>
+      <link>https://example.com/no-summary</link>
+      <guid>guid-no-summary</guid>
+      <pubDate>Mon, 01 Jan 2024 10:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
+"""
+
+    candidates = parse_feed(raw, _FEED_URL, _SOURCE_ID)
+
+    assert len(candidates) == 1
+    assert candidates[0].summary is None
 
 
 def test_parse_feed_skips_entries_missing_link() -> None:

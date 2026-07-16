@@ -39,8 +39,12 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
             `delete_topic` / `list_sources_for_topic` in repositories.py
       - [x] Postgres-backed repository tests (round-trip, list order, update
             keywords, delete with sources attached, list_sources_for_topic)
-- [ ] **T4** Keyword matcher (`topics/matcher.py`) + `ArticleCandidate.summary`
+- [x] **T4** Keyword matcher (`topics/matcher.py`) + `ArticleCandidate.summary`
       populated by `parse_feed` (spec §3.4.1 — sets the recall ceiling)
+      - [x] `topics/matcher.py` pure `matches()` — case-insensitive, word-boundary,
+            any-match; `re.escape` on untrusted keywords
+      - [x] `ArticleCandidate.summary` + `parse_feed` from entry summary/description
+      - [x] Unit tests: matcher boundaries/metacharacters; feed summary RSS/Atom/absent
 - [ ] **T5** Ingestion filtering — matcher injected; filter at both asymmetric
       points; rejected candidates still recorded as observable attempts
 - [ ] **T6** Pipeline scoping — `list_eligible_unbatched_articles` **and**

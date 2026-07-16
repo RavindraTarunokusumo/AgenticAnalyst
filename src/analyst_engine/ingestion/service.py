@@ -142,6 +142,7 @@ class IngestionService:
                 author=None,
                 published_at=None,
                 entry_id=None,
+                summary=None,
             )
             try:
                 result = await self._ingest_candidate(candidate)
@@ -174,6 +175,7 @@ class IngestionService:
             author=None,
             published_at=None,
             entry_id=None,
+            summary=None,
         )
 
         if len(content) > self._settings.article_max_response_size_bytes:

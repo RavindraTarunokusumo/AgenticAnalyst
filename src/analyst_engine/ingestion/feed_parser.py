@@ -64,6 +64,9 @@ def parse_feed(
         author = entry.get("author") or None
         published_at = _entry_published_at(entry)
         entry_id = entry.get("id") or entry.get("guid") or None
+        # feedparser normalises RSS description and Atom summary onto "summary";
+        # fall back to "description" for raw RSS-shaped dicts.
+        summary = entry.get("summary") or entry.get("description") or None
 
         candidates.append(
             ArticleCandidate(
@@ -74,6 +77,7 @@ def parse_feed(
                 author=author,
                 published_at=published_at,
                 entry_id=entry_id,
+                summary=summary,
             )
         )
 

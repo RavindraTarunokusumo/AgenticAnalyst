@@ -28,6 +28,7 @@ class ArticleCandidate:
     author: str | None
     published_at: datetime | None
     entry_id: str | None
+    summary: str | None
 
 
 @dataclass(frozen=True)
