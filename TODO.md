@@ -74,7 +74,8 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
       migration) rather than adding a 4th revision that immediately corrects
       the 3rd. ORM `nullable=True`; migration upgrade/downgrade mirror
       `article.source_id`; Postgres-backed repository round-trip test added.
-- [ ] **T6** Pipeline scoping — `list_eligible_unbatched_articles` **and**
+- [x] **T6** Pipeline scoping — `list_eligible_unbatched_articles` **and**
+      `list_due_source_feeds` gain `topic_id` (spec §4.1); per-topic runs — `list_eligible_unbatched_articles` **and**
       `list_due_source_feeds` gain `topic_id` (spec §4.1); per-topic runs
 - [ ] **T7** Scheduler iterates topics (R5: cadence stays the only trigger)
 - [ ] **T8** `ModelTask.TOPIC_ASSIST` + `topics/prompts.py`
