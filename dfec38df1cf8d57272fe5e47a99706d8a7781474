@@ -1,0 +1,5 @@
+Task: pypdf dependency
+Summary: Added pypdf as a new runtime dependency for PDF text extraction (no stdlib option).
+Docs: N/A
+TODO: Backend chain - pypdf dependency
+Validation: uv sync
