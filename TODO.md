@@ -41,9 +41,11 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
             keywords, delete with sources attached, list_sources_for_topic)
 - [x] **T4** Keyword matcher (`topics/matcher.py`) + `ArticleCandidate.summary`
       populated by `parse_feed` (spec §3.4.1 — sets the recall ceiling)
+      (`8b3e10d`, `2d5fca9`)
       - [x] `topics/matcher.py` pure `matches()` — case-insensitive, word-boundary,
-            any-match; `re.escape` on untrusted keywords
+            any-match; `re.escape` on untrusted keywords (`8b3e10d`)
       - [x] `ArticleCandidate.summary` + `parse_feed` from entry summary/description
+            (`2d5fca9`)
       - [x] Unit tests: matcher boundaries/metacharacters; feed summary RSS/Atom/absent
 - [ ] **T5** Ingestion filtering — matcher injected; filter at both asymmetric
       points; rejected candidates still recorded as observable attempts
