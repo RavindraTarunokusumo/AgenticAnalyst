@@ -65,6 +65,7 @@ class TriggerRequest(BaseModel):
     cadence: str
     covered_start: date
     covered_end: date
+    topic_id: UUID
 
 
 class TriggerResponse(BaseModel):
@@ -83,6 +84,8 @@ class RegisterSourceRequest(BaseModel):
     stable_id: str
     name: str
     normalized_domain: str
+    # Required once Source carries topic_id (T1). Full topics CRUD surface is T9.
+    topic_id: UUID
     feeds: list[RegisterFeedRequest] = []
 
 
@@ -135,10 +138,12 @@ class IngestionAttemptResponse(BaseModel):
 
 class TriggerDailyPipelineRequest(BaseModel):
     target_date: date
+    topic_id: UUID
 
 
 class DailyPipelineResultResponse(BaseModel):
     target_date: date
+    topic_id: UUID
     feeds_polled: int
     articles_succeeded: int
     articles_duplicate: int
@@ -156,10 +161,12 @@ class DailyPipelineResultResponse(BaseModel):
 
 class TriggerPeriodicPipelineRequest(BaseModel):
     target_date: date
+    topic_id: UUID
 
 
 class PeriodicPipelineResultResponse(BaseModel):
     cadence: str
+    topic_id: UUID
     covered_start: date
     covered_end: date
     summaries_selected: int
@@ -260,6 +267,7 @@ def _source_to_response(source: Source, feeds: list[SourceFeed]) -> SourceRespon
 def _periodic_result_to_response(result: PeriodicPipelineResult) -> PeriodicPipelineResultResponse:
     return PeriodicPipelineResultResponse(
         cadence=result.cadence.value,
+        topic_id=result.topic_id,
         covered_start=result.covered_start,
         covered_end=result.covered_end,
         summaries_selected=result.summaries_selected,
@@ -341,18 +349,22 @@ def create_app(
         covered_start: date
         covered_end: date
         if req.cadence == "daily":
-            daily_result = await app.state.pipeline.run(req.covered_start)
+            daily_result = await app.state.pipeline.run(req.covered_start, topic_id=req.topic_id)
             run_id = daily_result.workflow_run_id
             status = daily_result.workflow_status.value if daily_result.workflow_status else None
             covered_start = covered_end = daily_result.target_date
         elif req.cadence == "weekly":
-            weekly_result = await app.state.weekly_pipeline.run(req.covered_start)
+            weekly_result = await app.state.weekly_pipeline.run(
+                req.covered_start, topic_id=req.topic_id
+            )
             run_id = weekly_result.workflow_run_id
             status = weekly_result.workflow_status.value if weekly_result.workflow_status else None
             covered_start = weekly_result.covered_start
             covered_end = weekly_result.covered_end
         elif req.cadence == "monthly":
-            monthly_result = await app.state.monthly_pipeline.run(req.covered_start)
+            monthly_result = await app.state.monthly_pipeline.run(
+                req.covered_start, topic_id=req.topic_id
+            )
             run_id = monthly_result.workflow_run_id
             status = (
                 monthly_result.workflow_status.value if monthly_result.workflow_status else None
@@ -363,11 +375,10 @@ def create_app(
             raise HTTPException(status_code=400, detail="unknown cadence")
         if run_id is None or status is None:
             raise HTTPException(status_code=409, detail="no content for the requested window")
-        # Mirrors WorkflowRunner._ensure_run's own key derivation - built from
-        # each pipeline's actual, normalized covered_start/covered_end (not
-        # the raw request), since weekly/monthly may not be Monday/month-
-        # aligned as submitted.
-        idempotency_key = f"{req.cadence}:{covered_start.isoformat()}:{covered_end.isoformat()}"
+        # Mirrors WorkflowRunner._ensure_run's own key derivation — includes topic_id.
+        idempotency_key = (
+            f"{req.cadence}:{req.topic_id}:{covered_start.isoformat()}:{covered_end.isoformat()}"
+        )
         return TriggerResponse(
             run_id=str(run_id),
             status=status,
@@ -396,6 +407,7 @@ def create_app(
             await upsert_source(
                 session,
                 Source(
+                    topic_id=req.topic_id,
                     stable_id=req.stable_id,
                     name=req.name,
                     normalized_domain=req.normalized_domain,
@@ -508,9 +520,10 @@ def create_app(
         req: TriggerDailyPipelineRequest,
         _key: str = Depends(_require_key),
     ) -> DailyPipelineResultResponse:
-        result = await app.state.pipeline.run(req.target_date)
+        result = await app.state.pipeline.run(req.target_date, topic_id=req.topic_id)
         return DailyPipelineResultResponse(
             target_date=result.target_date,
+            topic_id=result.topic_id,
             feeds_polled=result.feeds_polled,
             articles_succeeded=result.articles_succeeded,
             articles_duplicate=result.articles_duplicate,
@@ -531,7 +544,7 @@ def create_app(
         req: TriggerPeriodicPipelineRequest,
         _key: str = Depends(_require_key),
     ) -> PeriodicPipelineResultResponse:
-        result = await app.state.weekly_pipeline.run(req.target_date)
+        result = await app.state.weekly_pipeline.run(req.target_date, topic_id=req.topic_id)
         return _periodic_result_to_response(result)
 
     @app.post("/pipelines/monthly", response_model=PeriodicPipelineResultResponse)
@@ -539,7 +552,7 @@ def create_app(
         req: TriggerPeriodicPipelineRequest,
         _key: str = Depends(_require_key),
     ) -> PeriodicPipelineResultResponse:
-        result = await app.state.monthly_pipeline.run(req.target_date)
+        result = await app.state.monthly_pipeline.run(req.target_date, topic_id=req.topic_id)
         return _periodic_result_to_response(result)
 
     @app.get("/briefs", response_model=list[BriefListItemResponse])
