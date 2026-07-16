@@ -25,7 +25,7 @@ implementer's scoped tests) before committing.
 | `DailyBriefPipeline.run(target_date)` gains a topic | T6 | `api/app.py` `/pipelines/daily`; `scheduling.py`; pipeline tests |
 | `PeriodicBriefPipeline.run(...)` gains a topic | T6 | `api/app.py` `/pipelines/{weekly,monthly}`; `scheduling.py`; tests |
 | `Brief` gains non-null `topic_id` | T1 | brief construction in `workflows/graphs.py`, both pipelines; every `Brief(...)` fixture |
-| `Article` gains non-null `topic_id`; `source_id` becomes nullable | T1 | `_finalize_extracted`; `get_sources_by_ids` call at `daily_brief.py:135`; every `Article(...)` fixture |
+| `Article` gains non-null `topic_id`; `source_id` becomes nullable | T1 | `_finalize_extracted`; every `Article(...)` fixture; **and four `src/` call sites — see T1b** |
 | `IngestionService.__init__` gains a relevance matcher | T5 | `runtime.py:build_ingestion_service`; `tests/unit/test_ingestion_service.py` `build_service`; `tests/integration/test_ingestion_concurrency.py` |
 | `ModelTask` gains `TOPIC_ASSIST` | T8 | `models/dashscope.py` + `models/openrouter.py` task maps (openrouter raises for unmapped tasks — mirror the EMBED precedent) |
 
@@ -78,6 +78,23 @@ docs/                              T14 architecture, database, changelog
 - **Constraint:** reject empty `keywords[]` at the model boundary (spec §6) —
   empty must not mean "match everything".
 - **Note:** pure pydantic, no infra imports (file's existing rule).
+
+### T1b — Source-less articles in `src/` (added mid-session, Rule 2)
+- **Consumes:** T1, spec §3.2.
+- **Why it exists:** the post-T1 full gate found four `src/` call sites that
+  assume `Article.source_id` is non-null. This table originally listed only
+  one. Not a type nit: `summarizer._build_article_source_lookup`
+  (`summarization/summarizer.py:33`) **raises `SummaryValidationError`** when a
+  source is absent, so a pasted link or upload — source-less by design — would
+  crash the brief pipeline. The R4 feature would break the first time it ran.
+- **Produces:** the four sites tolerate a null `source_id`:
+  `summarization/summarizer.py:33` (must not raise), `pipeline/daily_brief.py:136`,
+  `api/app.py:581,603`. Source-less articles carry an explicit fallback
+  attribution rather than an empty string, so a brief citing a pasted article
+  reads honestly rather than showing a blank publisher.
+- **Done when:** `mypy src` is green. Tests remain red until T2-T6 land; that
+  breakage is expected and owned elsewhere.
+- **Scope guard:** do not fix test fixtures here.
 
 ### T2 — Persistence + migration
 - **Consumes:** T1.

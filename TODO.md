@@ -17,6 +17,14 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
 
 - [x] **T1** Domain models — `Topic`; `topic_id` on Source/Article/Brief/
       IngestionAttempt; `Article.source_id` nullable; reject empty `keywords[]`
+- [ ] **T1b** Handle source-less articles in `src/` — *added mid-session
+      (Rule 2); the plan's breaking-change table listed only
+      `daily_brief.py:135` and missed three more call sites, found by the
+      post-T1 full gate.* `summarizer._build_article_source_lookup` **raises**
+      on a null `source_id`, so a pasted link or upload (source-less by design,
+      spec §3.2) would crash the brief pipeline — the R4 feature breaking the
+      moment it is used. Also `daily_brief.py:136`, `api/app.py:581,603`.
+      Done when `mypy src` is green (tests stay red until T2-T6 land).
 - [ ] **T2** Persistence + Alembic migration + Default-topic backfill
       (needs keywords sentinel — empty is rejected by T1)
 - [ ] **T3** Topic repository (CRUD + `list_sources_for_topic`)
