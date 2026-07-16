@@ -1,0 +1,5 @@
+Task: docs update
+Summary: Documented the new FileExtractor/ingest_file/POST /ingestion/files backend surface and the onboarding/add-content frontend components in architecture.md, plus a local ALLOW_UNAUTHENTICATED_WRITE dev note in commands.md and a changelog entry.
+Docs: docs/architecture.md, docs/commands.md, docs/changelog.md
+TODO: Docs task
+Validation: N/A (docs only)
