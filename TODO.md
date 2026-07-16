@@ -27,8 +27,13 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
       Fallback attribution: `USER_PROVIDED_SOURCE_NAME` ("User-provided").
       Source-id sites are mypy-clean; remaining `mypy src` errors are
       missing `topic_id` in later-task call sites (T2–T6 ownership).
-- [ ] **T2** Persistence + Alembic migration + Default-topic backfill
-      (needs keywords sentinel — empty is rejected by T1)
+- [x] **T2** Persistence + Alembic migration + Default-topic backfill
+      (needs keywords sentinel — empty is rejected by T1). ORM `Topic`
+      table; `topic_id` FK on source/article/brief/ingestion_attempt;
+      `article.source_id` nullable. Revision `00f3ae192a5a` revises
+      `6b135f7a55de`: create topic → insert Default with keywords
+      `["__default__"]` → backfill → NOT NULL. Executed against real
+      Postgres (upgrade/downgrade + seeded backfill).
 - [ ] **T3** Topic repository (CRUD + `list_sources_for_topic`)
 - [ ] **T4** Keyword matcher (`topics/matcher.py`) + `ArticleCandidate.summary`
       populated by `parse_feed` (spec §3.4.1 — sets the recall ceiling)
