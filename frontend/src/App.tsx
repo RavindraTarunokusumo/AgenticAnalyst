@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BriefDetail as BriefDetailData, BriefListItem, Cadence } from './api'
-import { fetchBriefDetail, fetchBriefList } from './api'
+import type { BriefDetail as BriefDetailData, BriefListItem, Cadence, Source } from './api'
+import { fetchBriefDetail, fetchBriefList, fetchSources } from './api'
 import { BriefDetail } from './components/BriefDetail'
 import { BriefList } from './components/BriefList'
 import { CadenceTabs } from './components/CadenceTabs'
+import { ErrorState } from './components/ErrorState'
+import { LoadingState } from './components/LoadingState'
+import { Onboarding } from './components/Onboarding'
 
 function App() {
   const [cadence, setCadence] = useState<Cadence>('daily')
@@ -16,6 +19,36 @@ function App() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const latestDetailRequestId = useRef<string | null>(null)
+
+  const [sources, setSources] = useState<Source[] | null>(null)
+  const [sourcesLoading, setSourcesLoading] = useState(true)
+  const [sourcesError, setSourcesError] = useState<string | null>(null)
+
+  // Gates the normal 3-panel view behind at least one registered source
+  // (spec §3.1) - runs once on mount, not on cadence/selection changes.
+  useEffect(() => {
+    let cancelled = false
+    fetchSources()
+      .then((items) => {
+        if (!cancelled) setSources(items)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setSourcesError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => {
+        if (!cancelled) setSourcesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // The api key itself is threaded into App state in Task 11's wiring, once
+  // AddContentPanel/ApiKeySettings exist to consume it; Onboarding has
+  // already persisted it to localStorage by the time this fires.
+  function handleOnboarded(source: Source, _apiKey: string) {
+    setSources([source])
+  }
 
   // Re-fetch the list whenever the active cadence tab changes; the currently
   // selected brief and its detail panel are left alone (spec §6 step 4 - no
@@ -71,11 +104,42 @@ function App() {
       })
   }
 
+  const header = (
+    <header className="border-b border-slate-200 px-6 py-4">
+      <h1 className="text-xl font-semibold">AnalystEngine Briefs</h1>
+    </header>
+  )
+
+  if (sourcesLoading) {
+    return (
+      <div className="min-h-svh bg-white text-slate-900">
+        {header}
+        <LoadingState label="Loading sources..." />
+      </div>
+    )
+  }
+
+  if (sourcesError !== null) {
+    return (
+      <div className="min-h-svh bg-white text-slate-900">
+        {header}
+        <ErrorState message={sourcesError} />
+      </div>
+    )
+  }
+
+  if (sources !== null && sources.length === 0) {
+    return (
+      <div className="min-h-svh bg-white text-slate-900">
+        {header}
+        <Onboarding onRegistered={handleOnboarded} />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-svh bg-white text-slate-900">
-      <header className="border-b border-slate-200 px-6 py-4">
-        <h1 className="text-xl font-semibold">AnalystEngine Briefs</h1>
-      </header>
+      {header}
 
       <main className="mx-auto grid max-w-6xl grid-cols-1 gap-6 p-6 md:grid-cols-[320px_1fr]">
         <section className="rounded-md border border-slate-200">
