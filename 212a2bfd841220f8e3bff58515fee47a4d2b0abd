@@ -1,0 +1,5 @@
+Task: mypy strict-mode fix
+Summary: mypy src (backend-only, per-chain) was clean, but the documented full gate (mypy src tests) surfaced a pypdf indexed-assignment typing gap in the test fixture and a misplaced type:ignore comment - both invisible to a scoped per-chain run.
+Docs: N/A
+TODO: N/A (post-merge validation fix)
+Validation: mypy src tests, pytest tests/unit tests/api
