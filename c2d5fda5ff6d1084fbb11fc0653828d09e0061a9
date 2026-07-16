@@ -1,0 +1,5 @@
+Task: ExtractorKind upload members
+Summary: Added FILE_PDF/FILE_TEXT to ExtractorKind so file-based extraction has a value to stamp on ExtractedArticle.extractor. Additive, no migration (String(32) column, no DB constraint).
+Docs: N/A
+TODO: Backend chain - ExtractorKind
+Validation: mypy
