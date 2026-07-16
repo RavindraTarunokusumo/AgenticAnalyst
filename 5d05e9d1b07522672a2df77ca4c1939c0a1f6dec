@@ -1,0 +1,5 @@
+Task: Add-content UI
+Summary: AddContentPanel.tsx (paste links / add feed / upload file modes), IngestionResultList.tsx, RecentActivityList.tsx. Distinguishes thrown auth errors from per-item ingestion failures per spec edge cases.
+Docs: N/A
+TODO: Frontend chain - Add-content UI
+Validation: npm run build
