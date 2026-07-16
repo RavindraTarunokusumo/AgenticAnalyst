@@ -47,17 +47,21 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
       - [x] `ArticleCandidate.summary` + `parse_feed` from entry summary/description
             (`2d5fca9`)
       - [x] Unit tests: matcher boundaries/metacharacters; feed summary RSS/Atom/absent
-- [ ] **T5** Ingestion filtering — matcher injected; filter at both asymmetric
+- [x] **T5** Ingestion filtering — matcher injected; filter at both asymmetric
       points; rejected candidates still recorded as observable attempts
-      - [ ] Inject `is_relevant` predicate into `IngestionService`; wire
+      (`cfc7114`, `ec266aa`, `9b4482c`)
+      - [x] Inject `is_relevant` predicate into `IngestionService`; wire
             `matches` in `runtime.build_ingestion_service` (spec §3.3 seam)
-      - [ ] `poll_feed` resolves source→topic→keywords; stage-1 filter on
+            (`ec266aa`)
+      - [x] `poll_feed` resolves source→topic→keywords; stage-1 filter on
             title+summary before fetch; stage-2 on cleaned_content before
             persist; rejections record `not_relevant` attempts (spec §3.4/§6)
-      - [ ] `ingest_urls`/`ingest_file` take `topic_id`, set article
+            (`ec266aa`)
+      - [x] `ingest_urls`/`ingest_file` take `topic_id`, set article
             `source_id=None`, no relevance filter (spec §3.2; R4/R5)
-      - [ ] Unit tests: stage-1 no-fetch, stage-2 drop, attempt recorded,
-            on-topic pass, direct-add topic_id + unfiltered
+            (`cfc7114`, `ec266aa`)
+      - [x] Unit tests: stage-1 no-fetch, stage-2 drop, attempt recorded,
+            on-topic pass, direct-add topic_id + unfiltered (`9b4482c`)
 - [ ] **T6** Pipeline scoping — `list_eligible_unbatched_articles` **and**
       `list_due_source_feeds` gain `topic_id` (spec §4.1); per-topic runs
 - [ ] **T7** Scheduler iterates topics (R5: cadence stays the only trigger)
