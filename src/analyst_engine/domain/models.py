@@ -103,6 +103,10 @@ class Topic(BaseModel):
         return v
 
 
+# Display / prompt attribution when Article.source_id is null (pasted link or upload).
+USER_PROVIDED_SOURCE_NAME = "User-provided"
+
+
 class Source(BaseModel):
     """Registered information source."""
 

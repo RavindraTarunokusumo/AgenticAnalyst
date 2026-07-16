@@ -9,6 +9,7 @@ from uuid import UUID
 import pytest
 
 from analyst_engine.domain.models import (
+    USER_PROVIDED_SOURCE_NAME,
     Article,
     ArticleBatch,
     BatchSummary,
@@ -23,6 +24,7 @@ from analyst_engine.summarization.prompts import (
 )
 from analyst_engine.summarization.summarizer import SummaryValidationError, summarize_batch
 
+_TOPIC_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 _SOURCE_ID = UUID("11111111-1111-1111-1111-111111111111")
 _ARTICLE_IDS = [
     UUID("00000000-0000-0000-0000-000000000001"),
@@ -71,6 +73,7 @@ class _ScriptedGateway(ModelGateway):
 def _make_source() -> Source:
     return Source(
         id=_SOURCE_ID,
+        topic_id=_TOPIC_ID,
         stable_id="test-src",
         name="Test Source",
         normalized_domain="example.com",
@@ -82,10 +85,12 @@ def _make_article(
     *,
     title: str,
     cleaned_content: str,
+    source_id: UUID | None = _SOURCE_ID,
 ) -> Article:
     return Article(
         id=article_id,
-        source_id=_SOURCE_ID,
+        topic_id=_TOPIC_ID,
+        source_id=source_id,
         url=f"https://example.com/{article_id}",
         url_fingerprint=f"fp-{article_id}",
         title=title,
@@ -289,3 +294,89 @@ def test_build_batch_summary_messages_delimits_each_article() -> None:
         assert article.cleaned_content in user_content
         assert f"--- END ARTICLE {article.id} ---" in user_content
     assert f"prompt_version: {_PROMPT_VERSION}" in user_content
+
+
+def test_prompt_uses_user_provided_attribution_for_source_less_article() -> None:
+    article = _make_article(
+        _ARTICLE_IDS[0],
+        title="Pasted briefing note",
+        cleaned_content="A user-pasted article with no registered source.",
+        source_id=None,
+    )
+    messages = build_batch_summary_messages(
+        [(article, None)],
+        prompt_version=_PROMPT_VERSION,
+    )
+
+    user_content = messages[1]["content"]
+    assert f"Source: {USER_PROVIDED_SOURCE_NAME}\n" in user_content
+    assert f"{USER_PROVIDED_SOURCE_NAME} (" not in user_content
+
+
+@pytest.mark.asyncio
+async def test_source_less_articles_do_not_raise_during_summarize() -> None:
+    """Pastes/uploads have source_id=None; summarization must tolerate them (spec §3.2)."""
+    articles = [
+        _make_article(
+            _ARTICLE_IDS[0],
+            title="User paste A",
+            cleaned_content="First pasted article body.",
+            source_id=None,
+        ),
+        _make_article(
+            _ARTICLE_IDS[1],
+            title="User paste B",
+            cleaned_content="Second pasted article body.",
+            source_id=None,
+        ),
+        _make_article(
+            _ARTICLE_IDS[2],
+            title="User paste C",
+            cleaned_content="Third pasted article body.",
+            source_id=None,
+        ),
+    ]
+    batch = _make_batch([a.id for a in articles])
+    gateway = _ScriptedGateway(
+        BatchSummaryModelResult(
+            summary="Three user-provided notes.",
+            citations=[Citation(article_id=_ARTICLE_IDS[0], excerpt="First pasted")],
+        )
+    )
+
+    summary, _usage = await summarize_batch(
+        batch,
+        articles,
+        [],
+        gateway=gateway,
+        model=_MODEL,
+        prompt_version=_PROMPT_VERSION,
+        correlation_id=_CORRELATION_ID,
+    )
+
+    assert summary.summary == "Three user-provided notes."
+    assert gateway.last_messages is not None
+    assert f"Source: {USER_PROVIDED_SOURCE_NAME}" in gateway.last_messages[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_missing_registered_source_still_raises() -> None:
+    """Null source_id is allowed; a set source_id that is absent from sources is not."""
+    articles, _source, batch = _fixture_articles()
+    gateway = _ScriptedGateway(
+        BatchSummaryModelResult(
+            summary="unreachable",
+            citations=[Citation(article_id=_ARTICLE_IDS[0], excerpt=None)],
+        )
+    )
+
+    with pytest.raises(SummaryValidationError, match="missing source"):
+        await summarize_batch(
+            batch,
+            articles,
+            [],
+            gateway=gateway,
+            model=_MODEL,
+            prompt_version=_PROMPT_VERSION,
+            correlation_id=_CORRELATION_ID,
+        )

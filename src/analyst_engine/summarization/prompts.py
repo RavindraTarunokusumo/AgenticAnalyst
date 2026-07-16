@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from analyst_engine.domain.models import Article, Citation, Source
+from analyst_engine.domain.models import (
+    USER_PROVIDED_SOURCE_NAME,
+    Article,
+    Citation,
+    Source,
+)
 
 _SYSTEM_PROMPT = (
     "You are a batch summarization engine. Produce a cohesive summary of the given "
@@ -31,12 +36,16 @@ class BatchSummaryModelResult(BaseModel):
     citations: list[Citation]
 
 
-def _format_article_block(article: Article, source: Source) -> str:
+def _format_article_block(article: Article, source: Source | None) -> str:
     published = article.published_at.isoformat()
     content = article.cleaned_content or ""
+    if source is None:
+        source_line = f"Source: {USER_PROVIDED_SOURCE_NAME}"
+    else:
+        source_line = f"Source: {source.name} ({source.normalized_domain})"
     return (
         f"--- ARTICLE id={article.id} ---\n"
-        f"Source: {source.name} ({source.normalized_domain})\n"
+        f"{source_line}\n"
         f"Title: {article.title}\n"
         f"Published: {published}\n"
         f"Content:\n"
@@ -46,7 +55,7 @@ def _format_article_block(article: Article, source: Source) -> str:
 
 
 def build_batch_summary_messages(
-    batch_articles: list[tuple[Article, Source]],
+    batch_articles: list[tuple[Article, Source | None]],
     *,
     prompt_version: str,
 ) -> list[dict[str, str]]:

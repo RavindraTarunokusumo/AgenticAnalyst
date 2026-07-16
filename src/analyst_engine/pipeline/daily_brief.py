@@ -132,7 +132,9 @@ class DailyBriefPipeline:
             else:
                 async with session_scope(self._session_factory) as session:
                     batch_articles_rows = await get_articles_by_ids(session, batch.article_ids)
-                    source_ids = list({a.source_id for a in batch_articles_rows})
+                    source_ids = list(
+                        {a.source_id for a in batch_articles_rows if a.source_id is not None}
+                    )
                     sources = await get_sources_by_ids(session, source_ids)
                 try:
                     summary, _usage = await summarize_batch(

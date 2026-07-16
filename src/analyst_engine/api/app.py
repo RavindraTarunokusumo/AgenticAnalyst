@@ -18,7 +18,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from analyst_engine.api.readiness import ReadinessStatus, check_readiness
 from analyst_engine.config import Settings
-from analyst_engine.domain.models import Cadence, IngestionStatus, Source, SourceFeed
+from analyst_engine.domain.models import (
+    USER_PROVIDED_SOURCE_NAME,
+    Cadence,
+    IngestionStatus,
+    Source,
+    SourceFeed,
+)
 from analyst_engine.ingestion.canonicalize import UrlValidationError, canonicalize_url
 from analyst_engine.models.gateway import RetryableModelError, TerminalModelError
 from analyst_engine.persistence.engine import session_scope
@@ -578,7 +584,8 @@ def create_app(
             }
             articles = await get_articles_by_ids(session, list(article_ids))
             sources = await get_sources_by_ids(
-                session, list({article.source_id for article in articles})
+                session,
+                list({sid for article in articles if (sid := article.source_id) is not None}),
             )
 
         articles_by_id = {article.id: article for article in articles}
@@ -600,14 +607,18 @@ def create_app(
                         )
                     )
                     continue
-                source = sources_by_id.get(article.source_id)
+                source = (
+                    sources_by_id.get(article.source_id) if article.source_id is not None else None
+                )
                 resolved_citations.append(
                     ResolvedCitationResponse(
                         article_id=citation.article_id,
                         excerpt=citation.excerpt,
                         article_title=article.title,
                         article_url=article.url,
-                        source_name=source.name if source is not None else "",
+                        source_name=(
+                            source.name if source is not None else USER_PROVIDED_SOURCE_NAME
+                        ),
                     )
                 )
             cited_summaries.append(
