@@ -8,8 +8,8 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ### Session: Topic-First Analyst — Slice 1 (`codex/topic-first-analyst`)
 
-Spec: `docs/iterations/active/2026-07-16-topic-first-analyst.md` (`8e3c6da`, `cdf60ff`)
-Plan: `docs/iterations/active/2026-07-16-topic-first-analyst-plan.md` (`73aa05b`)
+Spec: `docs/superpowers/specs/2026-07-16-topic-first-analyst-design.md` (`8e3c6da`, `cdf60ff`)
+Plan: `docs/superpowers/plans/2026-07-16-topic-first-analyst.md` (`73aa05b`)
 
 Topic becomes the top-level unit: sources are scoped to a topic, fetching is
 keyword-filtered before any model call, and briefs are per-topic. Auto Search
@@ -34,7 +34,11 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
       `6b135f7a55de`: create topic → insert Default with keywords
       `["__default__"]` → backfill → NOT NULL. Executed against real
       Postgres (upgrade/downgrade + seeded backfill).
-- [ ] **T3** Topic repository (CRUD + `list_sources_for_topic`)
+- [x] **T3** Topic repository (CRUD + `list_sources_for_topic`) (`d2b3d57`)
+      - [x] `create_topic` / `get_topic` / `list_topics` / `update_topic` /
+            `delete_topic` / `list_sources_for_topic` in repositories.py
+      - [x] Postgres-backed repository tests (round-trip, list order, update
+            keywords, delete with sources attached, list_sources_for_topic)
 - [ ] **T4** Keyword matcher (`topics/matcher.py`) + `ArticleCandidate.summary`
       populated by `parse_feed` (spec §3.4.1 — sets the recall ceiling)
 - [ ] **T5** Ingestion filtering — matcher injected; filter at both asymmetric

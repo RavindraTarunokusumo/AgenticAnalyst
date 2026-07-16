@@ -29,6 +29,7 @@ from analyst_engine.domain.models import (
     PredictionExpectation,
     Source,
     SourceFeed,
+    Topic,
     WorkflowRun,
     WorkflowStatus,
 )
@@ -61,6 +62,9 @@ from analyst_engine.persistence.models import (
 )
 from analyst_engine.persistence.models import (
     SourceFeed as ORMSourceFeed,
+)
+from analyst_engine.persistence.models import (
+    Topic as ORMTopic,
 )
 from analyst_engine.persistence.models import (
     WorkflowRun as ORMWorkflowRun,
@@ -101,9 +105,22 @@ def _article_to_domain(row: ORMArticle) -> Article:
     )
 
 
+def _topic_to_domain(row: ORMTopic) -> Topic:
+    return Topic(
+        id=row.id,
+        name=row.name,
+        description=row.description,
+        interest_detail=row.interest_detail,
+        keywords=list(row.keywords),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
 def _source_to_domain(row: ORMSource) -> Source:
     return Source(
         id=row.id,
+        topic_id=row.topic_id,
         stable_id=row.stable_id,
         name=row.name,
         normalized_domain=row.normalized_domain,
@@ -372,6 +389,14 @@ class IngestionAttemptNotFoundError(RuntimeError):
     """Raised when an update targets no ingestion attempt."""
 
 
+class TopicNotFoundError(RuntimeError):
+    """Raised when a topic lookup/update/delete targets no row."""
+
+
+class TopicInUseError(RuntimeError):
+    """Raised when delete_topic is blocked by RESTRICT dependents (sources, etc.)."""
+
+
 _WORKFLOW_TRANSITIONS: dict[WorkflowStatus, frozenset[WorkflowStatus]] = {
     WorkflowStatus.PENDING: frozenset({WorkflowStatus.RUNNING, WorkflowStatus.FAILED}),
     WorkflowStatus.RUNNING: frozenset({WorkflowStatus.SUCCEEDED, WorkflowStatus.FAILED}),
@@ -384,6 +409,117 @@ _WORKFLOW_TRANSITIONS: dict[WorkflowStatus, frozenset[WorkflowStatus]] = {
 # --- Repositories / operations ---
 
 
+async def create_topic(session: AsyncSession, topic: Topic) -> Topic:
+    row = ORMTopic(
+        id=topic.id,
+        name=topic.name,
+        description=topic.description,
+        interest_detail=topic.interest_detail,
+        keywords=list(topic.keywords),
+        created_at=topic.created_at,
+        updated_at=topic.updated_at,
+    )
+    session.add(row)
+    await session.flush()
+    await session.refresh(row)
+    return _topic_to_domain(row)
+
+
+async def get_topic(session: AsyncSession, topic_id: uuid.UUID) -> Topic | None:
+    row = (
+        await session.execute(select(ORMTopic).where(ORMTopic.id == topic_id))
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    return _topic_to_domain(row)
+
+
+async def list_topics(session: AsyncSession) -> list[Topic]:
+    rows = (
+        (await session.execute(select(ORMTopic).order_by(ORMTopic.name.asc(), ORMTopic.id.asc())))
+        .scalars()
+        .all()
+    )
+    return [_topic_to_domain(row) for row in rows]
+
+
+async def update_topic(session: AsyncSession, topic: Topic) -> Topic:
+    """Persist editable topic configuration (R6); always bumps updated_at."""
+
+    row = (
+        await session.execute(select(ORMTopic).where(ORMTopic.id == topic.id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise TopicNotFoundError(f"topic not found: id={topic.id}")
+    # Domain Topic rejects empty keywords; re-check so the repository never
+    # writes a list that would silently match nothing (spec §6).
+    if not topic.keywords:
+        raise ValueError("keywords must not be empty")
+    for keyword in topic.keywords:
+        if not keyword or not keyword.strip():
+            raise ValueError("keywords entries must not be empty or whitespace-only")
+
+    row.name = topic.name
+    row.description = topic.description
+    row.interest_detail = topic.interest_detail
+    row.keywords = list(topic.keywords)
+    row.updated_at = datetime.now(UTC)
+    await session.flush()
+    await session.refresh(row)
+    return _topic_to_domain(row)
+
+
+async def delete_topic(session: AsyncSession, topic_id: uuid.UUID) -> None:
+    """Delete a topic. Does not cascade: ON DELETE RESTRICT dependents fail loudly.
+
+    Pre-checks dependents rather than relying on IntegrityError so the caller's
+    session stays usable (session_scope would otherwise hit PendingRollbackError
+    after a flushed FK violation).
+    """
+
+    row = (
+        await session.execute(select(ORMTopic).where(ORMTopic.id == topic_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise TopicNotFoundError(f"topic not found: id={topic_id}")
+
+    # Tables with topic_id FK ON DELETE RESTRICT (T2 migration).
+    has_dependents = (
+        await session.execute(
+            select(
+                or_(
+                    exists().where(ORMSource.topic_id == topic_id),
+                    exists().where(ORMArticle.topic_id == topic_id),
+                    exists().where(ORMBrief.topic_id == topic_id),
+                    exists().where(ORMIngestionAttempt.topic_id == topic_id),
+                )
+            )
+        )
+    ).scalar_one()
+    if has_dependents:
+        raise TopicInUseError(
+            f"topic still referenced by sources or other dependents: id={topic_id}"
+        )
+
+    await session.delete(row)
+    await session.flush()
+
+
+async def list_sources_for_topic(session: AsyncSession, topic_id: uuid.UUID) -> list[Source]:
+    rows = (
+        (
+            await session.execute(
+                select(ORMSource)
+                .where(ORMSource.topic_id == topic_id)
+                .order_by(ORMSource.stable_id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_source_to_domain(row) for row in rows]
+
+
 async def upsert_source(session: AsyncSession, source: Source) -> Source:
     orm = (
         await session.execute(select(ORMSource).where(ORMSource.stable_id == source.stable_id))
@@ -391,6 +527,7 @@ async def upsert_source(session: AsyncSession, source: Source) -> Source:
     if orm is None:
         orm = ORMSource(
             id=source.id,
+            topic_id=source.topic_id,
             stable_id=source.stable_id,
             name=source.name,
             normalized_domain=source.normalized_domain,

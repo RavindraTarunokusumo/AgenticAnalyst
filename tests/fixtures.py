@@ -37,6 +37,7 @@ _DOMAIN_TABLES = (
     "article_batch",
     "article",
     "source",
+    "topic",
 )
 
 
