@@ -6,6 +6,7 @@ import hashlib
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -32,6 +33,13 @@ from analyst_engine.persistence.repositories import (
 )
 
 _ERROR_SUMMARY_MAX_LENGTH = 500
+
+# Some browser/OS mime-db combinations report an empty or generic content-type
+# for a drag-and-dropped or oddly-associated file even though its extension is
+# unambiguous - fall back to the extension when the reported type doesn't
+# match a registered extractor, rather than rejecting a file the UI's own
+# accept-list allowed.
+_EXTENSION_FALLBACK_CONTENT_TYPES = {".pdf": "application/pdf", ".txt": "text/plain"}
 
 
 def _sanitize_error_summary(message: str) -> str:
@@ -168,11 +176,28 @@ class IngestionService:
             entry_id=None,
         )
 
+        if len(content) > self._settings.article_max_response_size_bytes:
+            return await self._record_failure(
+                candidate,
+                url,
+                content_hash,
+                "file_too_large",
+                (
+                    f"file size {len(content)} exceeds maximum "
+                    f"{self._settings.article_max_response_size_bytes} bytes"
+                ),
+                started_at,
+            )
+
         duplicate_result = await self._check_duplicate(candidate, url, content_hash, started_at)
         if duplicate_result is not None:
             return duplicate_result
 
         extractor = self._file_extractors.get(content_type)
+        if extractor is None:
+            fallback_type = _EXTENSION_FALLBACK_CONTENT_TYPES.get(Path(filename).suffix.lower())
+            if fallback_type is not None:
+                extractor = self._file_extractors.get(fallback_type)
         if extractor is None:
             return await self._record_failure(
                 candidate,
@@ -192,6 +217,20 @@ class IngestionService:
                 content_hash,
                 "extraction_failed",
                 str(exc),
+                started_at,
+            )
+        except Exception as exc:
+            # Malformed input can make pypdf raise something other than its own
+            # PyPdfError (KeyError/AttributeError/ValueError observed against
+            # fuzzed PDFs) - mirrors _ingest_candidate's broad `except Exception`
+            # around extraction (service.py primary/fallback path) rather than
+            # enumerating extractor-internal exception types here.
+            return await self._record_failure(
+                candidate,
+                url,
+                content_hash,
+                "extraction_failed",
+                _failure_summary_from_exception(exc),
                 started_at,
             )
 

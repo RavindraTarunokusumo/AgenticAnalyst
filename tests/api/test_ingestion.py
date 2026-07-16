@@ -129,14 +129,26 @@ def test_post_ingestion_files_requires_auth_and_maps_result(monkeypatch) -> None
     )
 
 
-def test_post_ingestion_files_rejects_oversized_upload_without_calling_service(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    ingestion_service = Mock(ingest_file=AsyncMock())
+def test_post_ingestion_files_maps_oversized_upload_failure_from_service(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # The size check lives in IngestionService.ingest_file (so it's recorded as
+    # an IngestionAttempt like every other failure mode, tested at the service
+    # level) - this test only proves the route passes the result through as-is.
+    ingestion_service = Mock(
+        ingest_file=AsyncMock(
+            return_value=IngestionResult(
+                candidate_url="report.pdf",
+                status=IngestionStatus.FAILED,
+                article_id=None,
+                error_code="file_too_large",
+                error_summary="file size 25 exceeds maximum 4 bytes",
+            )
+        )
+    )
     client = make_client(
         monkeypatch,
         allow_unauthenticated_write=True,
         ingestion_service=ingestion_service,
     )
-    client.app.state.runtime.settings.article_max_response_size_bytes = 4
 
     response = client.post(
         "/ingestion/files",
@@ -148,7 +160,9 @@ def test_post_ingestion_files_rejects_oversized_upload_without_calling_service(m
     body = response.json()
     assert body["status"] == "failed"
     assert body["error_code"] == "file_too_large"
-    ingestion_service.ingest_file.assert_not_awaited()
+    ingestion_service.ingest_file.assert_awaited_once_with(
+        _SOURCE_ID, "report.pdf", b"way more than four bytes", "application/pdf"
+    )
 
 
 def test_get_ingestion_attempts_returns_recent_attempts(monkeypatch) -> None:  # type: ignore[no-untyped-def]

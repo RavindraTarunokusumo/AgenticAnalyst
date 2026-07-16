@@ -450,19 +450,7 @@ def create_app(
         file: UploadFile = File(...),
         _key: str = Depends(_require_key),
     ) -> IngestionResultResponse:
-        runtime: RuntimeDependencies = app.state.runtime
         content = await file.read()
-        if len(content) > runtime.settings.article_max_response_size_bytes:
-            return IngestionResultResponse(
-                candidate_url=file.filename or "upload",
-                status=IngestionStatus.FAILED.value,
-                article_id=None,
-                error_code="file_too_large",
-                error_summary=(
-                    f"file size {len(content)} exceeds maximum "
-                    f"{runtime.settings.article_max_response_size_bytes} bytes"
-                ),
-            )
         result = await app.state.ingestion_service.ingest_file(
             source_id, file.filename or "upload", content, file.content_type or ""
         )

@@ -515,6 +515,29 @@ def _file_extracted(
 
 
 @pytest.mark.asyncio
+async def test_ingest_file_oversized_content_fails_with_error_code_and_records_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _ServiceHarness(monkeypatch)
+    extractor = _FakeFileExtractor(_file_extracted())
+    service = harness.build_service(
+        feed_client=_FakeFeedClient(FeedFetchResult(200, False, None, None, "", b"")),
+        primary=_FakeExtractor(_valid_extracted()),
+        fallback=_FakeExtractor(_valid_extracted()),
+        file_extractors={"application/pdf": extractor},
+    )
+    oversized_content = b"x" * (_settings().article_max_response_size_bytes + 1)
+
+    result = await service.ingest_file(_SOURCE_ID, "big.pdf", oversized_content, "application/pdf")
+
+    assert result.status is IngestionStatus.FAILED
+    assert result.error_code == "file_too_large"
+    assert extractor.calls == []
+    assert len(harness.recorded_attempts) == 1
+    assert harness.recorded_attempts[0].error_code == "file_too_large"
+
+
+@pytest.mark.asyncio
 async def test_ingest_file_success_stamps_ingestion_time_as_published_at(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
