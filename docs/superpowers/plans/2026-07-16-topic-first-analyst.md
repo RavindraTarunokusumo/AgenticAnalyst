@@ -1,6 +1,6 @@
 # Lightweight Plan — Topic-First Analyst, Slice 1
 
-**Spec:** `2026-07-16-topic-first-analyst.md` (§7 Slice 1 scope)
+**Spec:** `docs/superpowers/specs/2026-07-16-topic-first-analyst-design.md` (§7 Slice 1 scope)
 **Session:** `codex/topic-first-analyst`
 **Delegation:** Grok, `-m grok-4.5 --effort medium` (implementer),
 `-m grok-4.5 --effort high` (reviewer). Per-invocation flags, not repo config.
