@@ -1,0 +1,5 @@
+Task: api.ts additions
+Summary: New Source/FeedHealth/IngestionResult/IngestionAttempt types plus fetchSources/registerSource/ingestUrls/ingestFile/fetchIngestionAttempts wrappers, matching the backend Pydantic models field-for-field.
+Docs: N/A
+TODO: Frontend chain - api.ts
+Validation: npm run build (tsc -b)
