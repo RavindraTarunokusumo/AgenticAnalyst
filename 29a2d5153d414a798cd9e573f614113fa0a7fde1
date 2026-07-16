@@ -1,0 +1,5 @@
+Task: dev proxy fix
+Summary: vite.config.ts only proxied /briefs; api.ts now also fetches /sources and /ingestion, so npm run dev 404'd on every new write call. Extended the proxy list.
+Docs: N/A
+TODO: N/A (gap found during integration)
+Validation: npm run build
