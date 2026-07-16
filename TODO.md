@@ -6,6 +6,29 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
+## Session: Product UI Refinement (2026-07-16)
+
+Spec: `docs/superpowers/specs/2026-07-16-product-ui-refinement-design.md`
+Plan: `docs/superpowers/plans/2026-07-16-product-ui-refinement.md`
+
+Backend chain:
+- [ ] `pypdf` dependency (`pyproject.toml`)
+- [ ] `ExtractorKind` gains upload member(s) (`domain/models.py`)
+- [ ] `FileExtractor` protocol + PDF/text implementations (`ingestion/file_extractor.py`)
+- [ ] `IngestionService` shared-tail refactor + `ingest_file` (`ingestion/service.py`)
+- [ ] `POST /ingestion/files` route + `runtime.py` wiring (`api/app.py`)
+- [ ] Backend tests (`tests/unit/test_file_extractor.py`, `test_ingestion_service.py`, `tests/api/test_ingestion.py`)
+
+Frontend chain:
+- [ ] `api.ts` additions (types + write wrappers)
+- [ ] Onboarding + gating (`Onboarding.tsx`, `App.tsx`)
+- [ ] Add-content UI (`AddContentPanel.tsx`, `IngestionResultList.tsx`, `RecentActivityList.tsx`)
+- [ ] API key settings (`ApiKeySettings.tsx`)
+- [ ] `App.tsx` final wiring
+
+Docs:
+- [ ] `docs/architecture.md`, `docs/commands.md`, `docs/changelog.md`
+
 ## Future Backlog
 
 Candidate next slices, roughly in suggested priority order. None have a spec
