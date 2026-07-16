@@ -354,7 +354,9 @@ class IngestionAttempt(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     topic_id: UUID
-    source_id: UUID
+    # Nullable for directly-added articles (pasted URL / upload): same reason
+    # as Article.source_id — no registered Source (spec §3.2).
+    source_id: UUID | None = None
     source_feed_id: UUID | None = None
     requested_url: str
     canonical_url: str | None = None

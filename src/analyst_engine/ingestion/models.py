@@ -21,7 +21,7 @@ class FeedFetchResult:
 
 @dataclass(frozen=True)
 class ArticleCandidate:
-    source_id: UUID
+    source_id: UUID | None
     source_feed_id: UUID | None
     url: str
     title: str | None
