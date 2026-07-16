@@ -1,0 +1,5 @@
+Task: 3.2 Pydantic domain models
+Summary: Introduced frozen Pydantic models and enums matching the spec contracts for sources, articles, batches (3-5), summaries, briefs, narrative versions, expectations, embeddings, workflow runs. Validators enforce invariants. Pure domain, no side effects.
+Docs: src/analyst_engine/domain/* , TODO.md
+TODO: Task 3 sub-item 3.2
+Validation: ruff format/lint, mypy (6 files), pytest (25 pass) before commit. Specific add.

@@ -1,0 +1,1 @@
+Task: Harness Design\nSummary: Defer structured claim events pending prototype evaluation; define daily, weekly, and monthly frontier outputs.\nDocs: docs/superpowers/specs/2026-07-10-harness-design.md, TODO.md\nTODO: Harness Design / defer claim-event persistence and define cadence outputs\nValidation: git diff --check; active-reference scan; placeholder scan

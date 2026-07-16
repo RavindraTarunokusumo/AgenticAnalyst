@@ -1,0 +1,5 @@
+Task: Harden shared runtime cleanup
+Summary: Made runtime creation failure-safe and async, kept failed disposal retryable, and guaranteed runtime closure after scheduler shutdown errors.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 3 quality follow-up
+Validation: ruff format/check focused files; mypy focused source; 40 focused runtime/process/config/Compose tests

@@ -1,0 +1,5 @@
+Task: Add OpenRouter configuration and provider routing
+Summary: Added conditional provider settings, OpenRouter adapter/factory, offline transport tests, explicit embedding rejection, and retained DashScope adapter behavior.
+Docs: .env.example
+TODO: Runtime and Persistence Repair item 2
+Validation: ruff format/check focused; mypy provider/config; pytest config+OpenRouter (26 passed)

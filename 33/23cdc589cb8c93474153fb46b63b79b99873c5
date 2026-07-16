@@ -1,0 +1,5 @@
+Task: 3.5 Persistence engine
+Summary: Created async engine from Settings, session factory, and transactional session_scope context manager. All writes go through sessions provided here.
+Docs: src/analyst_engine/persistence/* , TODO.md
+TODO: 3.5
+Validation: full gates + mypy before commit.

@@ -1,0 +1,5 @@
+Task: Introduce shared runtime dependency bundle
+Summary: Added typed runtime construction and idempotent cleanup shared by API and scheduler process modes.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 3
+Validation: ruff format/check focused files; mypy focused source; 37 focused runtime/process/config/Compose tests

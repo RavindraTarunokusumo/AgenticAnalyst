@@ -1,0 +1,5 @@
+Task: 3.10 Documentation
+Summary: Updated database.md (complete schema + rules), patterns.md (realized patterns), architecture and testing references. Task 3 complete.
+Docs: docs/*.md , TODO.md
+TODO: 3.10
+Validation: full gates passed.

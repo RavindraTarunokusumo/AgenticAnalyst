@@ -1,0 +1,1 @@
+Task: Harness Design\nSummary: Define approved local-first Python, LangGraph, DashScope, PostgreSQL/pgvector, LangSmith, and quality-gate contract.\nDocs: docs/superpowers/specs/2026-07-10-harness-design.md, TODO.md\nTODO: Harness Design / write and validate specification\nValidation: git diff --check; placeholder scan

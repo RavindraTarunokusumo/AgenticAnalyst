@@ -1,0 +1,5 @@
+Task: 3.1 Add persistence and LangGraph checkpoint dependencies
+Summary: Added SQLAlchemy, Alembic, asyncpg, pgvector, langgraph, langgraph-checkpoint-postgres, psycopg[binary] to runtime; testcontainers to dev. Updated lock and expanded TODO breakdown. No source behavior change.
+Docs: pyproject.toml, uv.lock, TODO.md
+TODO: Task 3 sub-item 3.1
+Validation: ruff format --check, ruff check, mypy src tests, pytest (25 passed) all green before commit. Specific git add used.

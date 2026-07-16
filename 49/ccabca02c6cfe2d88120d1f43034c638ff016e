@@ -1,0 +1,5 @@
+Task: Runtime and persistence verification
+Summary: Enable capability-aware PostgreSQL integration, migration roundtrip, repository/checkpoint/workflow and injected API trigger coverage, plus CI database execution.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 6
+Validation: strict mypy; targeted API and URL tests; ruff; YAML parse; local Docker capability run was terminated before completion

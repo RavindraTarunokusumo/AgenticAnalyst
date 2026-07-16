@@ -1,0 +1,5 @@
+Task: Strengthen OpenRouter provider contract tests
+Summary: Added opt-in live smoke capability gate, exact endpoint and secret-safe authorization assertions, and alternative model routing coverage.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 2 review follow-up
+Validation: ruff format/check; mypy focused; pytest OpenRouter 9 passed, 1 skipped (live disabled)

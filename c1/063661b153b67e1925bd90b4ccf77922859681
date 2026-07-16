@@ -1,0 +1,5 @@
+Task: Runtime and Persistence Repair Task 4 final quality fixes
+Summary: Guard post-claim context failures, select narrative state through eligible prior briefs, and bound async integration coordination.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 4
+Validation: Ruff scoped; mypy scoped; 26 unit tests passed; PostgreSQL capability test skipped cleanly without Docker

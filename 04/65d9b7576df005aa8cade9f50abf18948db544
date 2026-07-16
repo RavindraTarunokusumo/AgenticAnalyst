@@ -1,0 +1,3 @@
+Task 3 complete: durable domain and persistence foundations.
+All subs (deps, domain, alembic, migration, engine, orm, repos, checkpoints, tests, docs) committed with full ruff/mypy/pytest + git notes before each.
+No claim_event. Docker limitation noted for integration.

@@ -1,0 +1,5 @@
+Task: Cover workflow-run success transition
+Summary: Added focused coverage proving running-to-succeeded preserves stable UUID and idempotency key.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 1 review follow-up
+Validation: uv run pytest tests/unit/test_workflow_run_repository.py -q (12 passed); file-scoped ruff format --check/check; git diff --check

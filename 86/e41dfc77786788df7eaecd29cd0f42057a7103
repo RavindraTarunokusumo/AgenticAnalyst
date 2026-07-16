@@ -1,0 +1,5 @@
+Task: Runtime and persistence verification
+Summary: Repair callable UTC defaults, non-package test fixture import, and pytest marker registration.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 6
+Validation: uv run mypy src tests

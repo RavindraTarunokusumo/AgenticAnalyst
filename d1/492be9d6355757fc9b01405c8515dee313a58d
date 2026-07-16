@@ -1,0 +1,5 @@
+Task: 3.7 Repositories
+Summary: Session-scoped writes + find by idempotency key + brief lookup. Mappers keep domain clean. Prepares for workflows.
+Docs: repositories.py , TODO.md
+TODO: 3.7
+Validation: full suite before.

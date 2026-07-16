@@ -1,0 +1,1 @@
+Task: Harness Design\nSummary: Define batch-summary-to-claim-event lineage and opt-in temporal-holdout evaluation.\nDocs: docs/superpowers/specs/2026-07-10-harness-design.md, TODO.md\nTODO: Harness Design / clarify batch provenance and temporal-holdout demo\nValidation: git diff --check; placeholder scan

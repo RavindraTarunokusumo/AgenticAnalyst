@@ -1,0 +1,5 @@
+Task: Runtime and Persistence Repair Task 4 integration coverage
+Summary: Capability-gated PostgreSQL/checkpointer test proves one pending claim, running duplicate suppression, stable checkpoint identity, and durable success.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 4
+Validation: Ruff scoped; mypy scoped; 4 tests collected; capability test skipped cleanly without Docker

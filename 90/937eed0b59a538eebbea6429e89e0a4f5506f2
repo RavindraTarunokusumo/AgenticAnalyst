@@ -1,0 +1,5 @@
+Task: 3.8 Checkpoints
+Summary: Async checkpointer provider wired to same DB. Setup is idempotent against our migration.
+Docs: checkpoints.py, __init__.py, TODO
+TODO: 3.8
+Validation: gates + mypy.

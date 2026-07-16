@@ -1,0 +1,5 @@
+Task: 3.6 ORM models
+Summary: Full SQLAlchemy declarative models for source/article/batch/summary/brief/narrative/expectation/embedding/workflow_run + pgvector. Ready for repositories.
+Docs: persistence/models.py, TODO.md
+TODO: 3.6
+Validation: gates passed.

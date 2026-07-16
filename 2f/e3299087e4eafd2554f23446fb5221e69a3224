@@ -1,0 +1,5 @@
+Task: Runtime and Persistence Repair Task 4 spec fixes
+Summary: Guard final success persistence and prove analytical rollback plus provider/database failure lifecycle behavior.
+Docs: N/A
+TODO: Runtime and Persistence Repair item 4
+Validation: 19 scoped workflow tests passed; diff check passed; prior combined scoped gate timed out before reporting lint/typecheck

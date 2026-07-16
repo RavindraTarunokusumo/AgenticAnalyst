@@ -1,0 +1,1 @@
+Task: Harness Planning\nSummary: Define file structure, interface contracts, build order, coverage map, and risks for the approved technical harness.\nDocs: docs/superpowers/plans/2026-07-10-technical-harness.md, TODO.md\nTODO: Harness Design / produce lightweight implementation contract\nValidation: git diff --check; plan placeholder scan; interface-reference scan
