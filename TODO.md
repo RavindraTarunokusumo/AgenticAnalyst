@@ -6,29 +6,6 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
-## Session: Product UI Refinement (2026-07-16)
-
-Spec: `docs/superpowers/specs/2026-07-16-product-ui-refinement-design.md`
-Plan: `docs/superpowers/plans/2026-07-16-product-ui-refinement.md`
-
-Backend chain:
-- [x] `pypdf` dependency (`pyproject.toml`) - `dfec38d`
-- [x] `ExtractorKind` gains upload member(s) (`domain/models.py`) - `c2d5fda`
-- [x] `FileExtractor` protocol + PDF/text implementations (`ingestion/file_extractor.py`) - `6911e89`
-- [x] `IngestionService` shared-tail refactor + `ingest_file` (`ingestion/service.py`) - `11796c6`
-- [x] `POST /ingestion/files` route + `runtime.py` wiring (`api/app.py`) - `a1b0a51`
-- [x] Backend tests (`tests/unit/test_file_extractor.py`, `test_ingestion_service.py`, `tests/api/test_ingestion.py`) - `1129771`, `212a2bf`
-
-Frontend chain:
-- [x] `api.ts` additions (types + write wrappers) - `bddd68f`
-- [x] Onboarding + gating (`Onboarding.tsx`, `App.tsx`) - `b7b3dc9`
-- [x] Add-content UI (`AddContentPanel.tsx`, `IngestionResultList.tsx`, `RecentActivityList.tsx`) - `5d05e9d`
-- [x] API key settings (`ApiKeySettings.tsx`) - `5a61e2f`
-- [x] `App.tsx` final wiring - `1433b99`, `29a2d51`
-
-Docs:
-- [x] `docs/architecture.md`, `docs/commands.md`, `docs/changelog.md` - `21b7d0e`
-
 ## Future Backlog
 
 Candidate next slices, roughly in suggested priority order. None have a spec
@@ -36,6 +13,26 @@ yet; each needs Workflow Step 3 (spec + lightweight plan) before
 implementation. See chat/session notes from 2026-07-15 for the full rationale
 behind this ordering.
 
+- [ ] **Onboarding personalization (topics of interest / analysis style).**
+      Raised 2026-07-16 while manually reviewing the just-merged Product UI
+      Refinement slice (`docs/iterations/archive/2026-07-16-product-ui-refinement.md`).
+      The onboarding form has no way to express *what* to track within a
+      source (e.g. "follow the US-Iran war on Reuters," not just register
+      `reuters.com` wholesale) - there is no topic/keyword field anywhere in
+      the domain model (`Source` has none; `topics` only ever exists as an
+      LLM-*output* on `BatchSummary`, never a user input), and no
+      personalization concept (e.g. an analysis-style/tone preference) at
+      all. Framed explicitly as a gap for a hackathon demo, not a design
+      nitpick - judges will type their own topic and notice it's
+      inexpressible. Suggested prioritization (highest impact per effort
+      first): (1) a "topics of interest" field on the onboarding form,
+      stored on `Source`, used to filter/tag ingested articles against the
+      existing `topics` extraction; (2) a short multi-step guided onboarding
+      flow (source -> topics -> style) instead of one static form, for the
+      "personalization is happening" feel; (3, stretch) an analysis-style
+      toggle threaded into `summarization/prompts.py`'s brief-generation
+      prompt - larger/riskier since it touches the summarization pipeline,
+      not just ingestion. Needs its own spec before scoping.
 - [ ] **Prediction expectation resolution.** `PredictionExpectation` rows
       are created by the frontier synthesis graph (`proposed_expectations`)
       with `outcome_status`, but nothing ever revisits and updates that
