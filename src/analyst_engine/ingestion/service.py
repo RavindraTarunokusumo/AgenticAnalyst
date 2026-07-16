@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -19,6 +22,7 @@ from analyst_engine.ingestion.extractor import (
 )
 from analyst_engine.ingestion.feed_client import FeedClient, RetryableFeedError, TerminalFeedError
 from analyst_engine.ingestion.feed_parser import FeedParseError, parse_feed
+from analyst_engine.ingestion.file_extractor import FileExtractionError, FileExtractor
 from analyst_engine.ingestion.models import ArticleCandidate, ExtractedArticle, IngestionResult
 from analyst_engine.persistence.engine import session_scope
 from analyst_engine.persistence.repositories import (
@@ -29,6 +33,13 @@ from analyst_engine.persistence.repositories import (
 )
 
 _ERROR_SUMMARY_MAX_LENGTH = 500
+
+# Some browser/OS mime-db combinations report an empty or generic content-type
+# for a drag-and-dropped or oddly-associated file even though its extension is
+# unambiguous - fall back to the extension when the reported type doesn't
+# match a registered extractor, rather than rejecting a file the UI's own
+# accept-list allowed.
+_EXTENSION_FALLBACK_CONTENT_TYPES = {".pdf": "application/pdf", ".txt": "text/plain"}
 
 
 def _sanitize_error_summary(message: str) -> str:
@@ -53,6 +64,7 @@ class IngestionService:
         primary_extractor: ArticleExtractor,
         fallback_extractor: ArticleExtractor,
         settings: Settings,
+        file_extractors: dict[str, FileExtractor],
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._session_factory = session_factory
@@ -60,6 +72,7 @@ class IngestionService:
         self._primary_extractor = primary_extractor
         self._fallback_extractor = fallback_extractor
         self._settings = settings
+        self._file_extractors = file_extractors
         self._clock = clock
 
     async def poll_feed(self, feed: SourceFeed) -> list[IngestionResult]:
@@ -143,6 +156,91 @@ class IngestionService:
             results.append(result)
         return results
 
+    async def ingest_file(
+        self,
+        source_id: UUID,
+        filename: str,
+        content: bytes,
+        content_type: str,
+    ) -> IngestionResult:
+        started_at = self._clock()
+        content_hash = hashlib.sha256(content).hexdigest()
+        url = f"upload://{content_hash}"
+        candidate = ArticleCandidate(
+            source_id=source_id,
+            source_feed_id=None,
+            url=url,
+            title=None,
+            author=None,
+            published_at=None,
+            entry_id=None,
+        )
+
+        if len(content) > self._settings.article_max_response_size_bytes:
+            return await self._record_failure(
+                candidate,
+                url,
+                content_hash,
+                "file_too_large",
+                (
+                    f"file size {len(content)} exceeds maximum "
+                    f"{self._settings.article_max_response_size_bytes} bytes"
+                ),
+                started_at,
+            )
+
+        duplicate_result = await self._check_duplicate(candidate, url, content_hash, started_at)
+        if duplicate_result is not None:
+            return duplicate_result
+
+        extractor = self._file_extractors.get(content_type)
+        if extractor is None:
+            fallback_type = _EXTENSION_FALLBACK_CONTENT_TYPES.get(Path(filename).suffix.lower())
+            if fallback_type is not None:
+                extractor = self._file_extractors.get(fallback_type)
+        if extractor is None:
+            return await self._record_failure(
+                candidate,
+                url,
+                content_hash,
+                "unsupported_file_type",
+                f"unsupported content type: {content_type}",
+                started_at,
+            )
+
+        try:
+            extracted = extractor.extract(filename, content)
+        except FileExtractionError as exc:
+            return await self._record_failure(
+                candidate,
+                url,
+                content_hash,
+                "extraction_failed",
+                str(exc),
+                started_at,
+            )
+        except Exception as exc:
+            # Malformed input can make pypdf raise something other than its own
+            # PyPdfError (KeyError/AttributeError/ValueError observed against
+            # fuzzed PDFs) - mirrors _ingest_candidate's broad `except Exception`
+            # around extraction (service.py primary/fallback path) rather than
+            # enumerating extractor-internal exception types here.
+            return await self._record_failure(
+                candidate,
+                url,
+                content_hash,
+                "extraction_failed",
+                _failure_summary_from_exception(exc),
+                started_at,
+            )
+
+        # Uploaded files carry no publish-date metadata (spec §4.1); the
+        # extractor has no clock, so ingest_file stamps ingestion time here.
+        if extracted.published_at is None:
+            extracted = replace(extracted, published_at=self._clock())
+
+        return await self._finalize_extracted(candidate, url, content_hash, extracted, started_at)
+
     async def _update_feed_on_failure(
         self,
         feed: SourceFeed,
@@ -189,16 +287,11 @@ class IngestionService:
                 started_at,
             )
 
-        async with session_scope(self._session_factory) as session:
-            existing = await get_article_by_fingerprint(session, fingerprint)
-        if existing is not None:
-            return await self._record_duplicate(
-                candidate,
-                canonical_url,
-                fingerprint,
-                existing.id,
-                started_at,
-            )
+        duplicate_result = await self._check_duplicate(
+            candidate, canonical_url, fingerprint, started_at
+        )
+        if duplicate_result is not None:
+            return duplicate_result
 
         try:
             extracted = await self._primary_extractor.extract(canonical_url)
@@ -248,6 +341,31 @@ class IngestionService:
                     started_at,
                 )
 
+        return await self._finalize_extracted(
+            candidate, canonical_url, fingerprint, extracted, started_at
+        )
+
+    async def _check_duplicate(
+        self,
+        candidate: ArticleCandidate,
+        url: str,
+        fingerprint: str,
+        started_at: datetime,
+    ) -> IngestionResult | None:
+        async with session_scope(self._session_factory) as session:
+            existing = await get_article_by_fingerprint(session, fingerprint)
+        if existing is None:
+            return None
+        return await self._record_duplicate(candidate, url, fingerprint, existing.id, started_at)
+
+    async def _finalize_extracted(
+        self,
+        candidate: ArticleCandidate,
+        canonical_url: str,
+        fingerprint: str,
+        extracted: ExtractedArticle,
+        started_at: datetime,
+    ) -> IngestionResult:
         title = (extracted.title or "").strip()
         if not title:
             return await self._record_failure(

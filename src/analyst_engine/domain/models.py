@@ -58,6 +58,8 @@ class ExtractorKind(StrEnum):
 
     PRIMARY_HTTP = "primary_http"
     CRAWL4AI = "crawl4ai"
+    FILE_PDF = "file_pdf"
+    FILE_TEXT = "file_text"
 
 
 class Citation(BaseModel):

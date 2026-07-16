@@ -14,6 +14,8 @@ export default defineConfig({
     // dev server's own origin.
     proxy: {
       '/briefs': 'http://localhost:8000',
+      '/sources': 'http://localhost:8000',
+      '/ingestion': 'http://localhost:8000',
     },
   },
 })

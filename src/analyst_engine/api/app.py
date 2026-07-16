@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Security, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
@@ -443,6 +443,24 @@ def create_app(
             )
             for result in results
         ]
+
+    @app.post("/ingestion/files", response_model=IngestionResultResponse)
+    async def ingest_file_route(
+        source_id: UUID = Form(...),
+        file: UploadFile = File(...),
+        _key: str = Depends(_require_key),
+    ) -> IngestionResultResponse:
+        content = await file.read()
+        result = await app.state.ingestion_service.ingest_file(
+            source_id, file.filename or "upload", content, file.content_type or ""
+        )
+        return IngestionResultResponse(
+            candidate_url=result.candidate_url,
+            status=result.status.value,
+            article_id=result.article_id,
+            error_code=result.error_code,
+            error_summary=result.error_summary,
+        )
 
     @app.get("/ingestion/attempts", response_model=list[IngestionAttemptResponse])
     async def get_ingestion_attempts(

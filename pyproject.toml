@@ -20,8 +20,10 @@ dependencies = [
     "pydantic-settings>=2.7",
     "playwright>=1.52",
     "psycopg[binary]>=3.2",
+    "pypdf>=5.0",
     "sqlalchemy[asyncio]>=2.0",
     "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.32",
 ]
 
 [dependency-groups]
@@ -52,6 +54,9 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Form", "fastapi.File"]
 
 [tool.mypy]
 python_version = "3.12"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -14,6 +15,7 @@ from analyst_engine.config import Settings
 from analyst_engine.domain.models import Article, ExtractorKind, IngestionStatus, SourceFeed
 from analyst_engine.ingestion.canonicalize import PrivateNetworkError
 from analyst_engine.ingestion.feed_client import RetryableFeedError
+from analyst_engine.ingestion.file_extractor import FileExtractionError
 from analyst_engine.ingestion.models import ExtractedArticle, FeedFetchResult
 from analyst_engine.ingestion.service import IngestionService
 
@@ -113,6 +115,18 @@ class _FakeExtractor:
         return self._result
 
 
+class _FakeFileExtractor:
+    def __init__(self, result: ExtractedArticle | Exception) -> None:
+        self._result = result
+        self.calls: list[tuple[str, bytes]] = []
+
+    def extract(self, filename: str, content: bytes) -> ExtractedArticle:
+        self.calls.append((filename, content))
+        if isinstance(self._result, Exception):
+            raise self._result
+        return self._result
+
+
 class _ServiceHarness:
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.upserted_feeds: list[SourceFeed] = []
@@ -158,6 +172,7 @@ class _ServiceHarness:
         feed_client: _FakeFeedClient,
         primary: _FakeExtractor,
         fallback: _FakeExtractor,
+        file_extractors: dict[str, Any] | None = None,
     ) -> IngestionService:
         return IngestionService(
             session_factory=AsyncMock(),
@@ -165,6 +180,7 @@ class _ServiceHarness:
             primary_extractor=primary,
             fallback_extractor=fallback,
             settings=_settings(),
+            file_extractors=file_extractors or {},
             clock=lambda: _FIXED_NOW,
         )
 
@@ -478,3 +494,135 @@ async def test_poll_feed_continues_after_unexpected_candidate_exception(
     assert results[0].status is IngestionStatus.FAILED
     assert results[0].error_code == "unexpected_error"
     assert results[1].status is IngestionStatus.SUCCEEDED
+
+
+def _file_extracted(
+    *,
+    title: str = "Uploaded Title",
+    text: str = _MIN_CONTENT,
+    published_at: datetime | None = None,
+) -> ExtractedArticle:
+    return ExtractedArticle(
+        url="report.pdf",
+        title=title,
+        text=text,
+        language=None,
+        extractor=ExtractorKind.FILE_PDF,
+        raw_content_hash="hash",
+        published_at=published_at,
+        author=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_ingest_file_oversized_content_fails_with_error_code_and_records_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _ServiceHarness(monkeypatch)
+    extractor = _FakeFileExtractor(_file_extracted())
+    service = harness.build_service(
+        feed_client=_FakeFeedClient(FeedFetchResult(200, False, None, None, "", b"")),
+        primary=_FakeExtractor(_valid_extracted()),
+        fallback=_FakeExtractor(_valid_extracted()),
+        file_extractors={"application/pdf": extractor},
+    )
+    oversized_content = b"x" * (_settings().article_max_response_size_bytes + 1)
+
+    result = await service.ingest_file(_SOURCE_ID, "big.pdf", oversized_content, "application/pdf")
+
+    assert result.status is IngestionStatus.FAILED
+    assert result.error_code == "file_too_large"
+    assert extractor.calls == []
+    assert len(harness.recorded_attempts) == 1
+    assert harness.recorded_attempts[0].error_code == "file_too_large"
+
+
+@pytest.mark.asyncio
+async def test_ingest_file_success_stamps_ingestion_time_as_published_at(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _ServiceHarness(monkeypatch)
+    content = b"uploaded pdf bytes"
+    extractor = _FakeFileExtractor(_file_extracted())
+    service = harness.build_service(
+        feed_client=_FakeFeedClient(FeedFetchResult(200, False, None, None, "", b"")),
+        primary=_FakeExtractor(_valid_extracted()),
+        fallback=_FakeExtractor(_valid_extracted()),
+        file_extractors={"application/pdf": extractor},
+    )
+
+    result = await service.ingest_file(_SOURCE_ID, "report.pdf", content, "application/pdf")
+
+    assert result.status is IngestionStatus.SUCCEEDED
+    assert result.candidate_url == f"upload://{hashlib.sha256(content).hexdigest()}"
+    assert extractor.calls == [("report.pdf", content)]
+    assert len(harness.saved_articles) == 1
+    assert harness.saved_articles[0].published_at == _FIXED_NOW
+
+
+@pytest.mark.asyncio
+async def test_ingest_file_duplicate_short_circuits_before_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _ServiceHarness(monkeypatch)
+    content = b"already ingested bytes"
+    content_hash = hashlib.sha256(content).hexdigest()
+    existing_id = uuid4()
+    harness.fingerprint_articles[content_hash] = Article(
+        id=existing_id,
+        source_id=_SOURCE_ID,
+        url=f"upload://{content_hash}",
+        url_fingerprint=content_hash,
+        title="Existing",
+        published_at=datetime(2026, 7, 10, tzinfo=UTC),
+    )
+    extractor = _FakeFileExtractor(_file_extracted())
+    service = harness.build_service(
+        feed_client=_FakeFeedClient(FeedFetchResult(200, False, None, None, "", b"")),
+        primary=_FakeExtractor(_valid_extracted()),
+        fallback=_FakeExtractor(_valid_extracted()),
+        file_extractors={"application/pdf": extractor},
+    )
+
+    result = await service.ingest_file(_SOURCE_ID, "report.pdf", content, "application/pdf")
+
+    assert result.status is IngestionStatus.DUPLICATE
+    assert result.article_id == existing_id
+    assert extractor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_ingest_file_unsupported_content_type_fails_with_error_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _ServiceHarness(monkeypatch)
+    service = harness.build_service(
+        feed_client=_FakeFeedClient(FeedFetchResult(200, False, None, None, "", b"")),
+        primary=_FakeExtractor(_valid_extracted()),
+        fallback=_FakeExtractor(_valid_extracted()),
+        file_extractors={"application/pdf": _FakeFileExtractor(_file_extracted())},
+    )
+
+    result = await service.ingest_file(_SOURCE_ID, "notes.docx", b"bytes", "application/msword")
+
+    assert result.status is IngestionStatus.FAILED
+    assert result.error_code == "unsupported_file_type"
+
+
+@pytest.mark.asyncio
+async def test_ingest_file_extraction_error_fails_with_error_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _ServiceHarness(monkeypatch)
+    extractor = _FakeFileExtractor(FileExtractionError("no extractable text"))
+    service = harness.build_service(
+        feed_client=_FakeFeedClient(FeedFetchResult(200, False, None, None, "", b"")),
+        primary=_FakeExtractor(_valid_extracted()),
+        fallback=_FakeExtractor(_valid_extracted()),
+        file_extractors={"application/pdf": extractor},
+    )
+
+    result = await service.ingest_file(_SOURCE_ID, "blank.pdf", b"bytes", "application/pdf")
+
+    assert result.status is IngestionStatus.FAILED
+    assert result.error_code == "extraction_failed"
