@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
+
 from analyst_engine.batching.batcher import batch_articles
 from analyst_engine.domain.models import Article, ArticleBatch, GroupingMethod
 
@@ -27,6 +29,7 @@ def _make_article(
     language: str | None = "en",
 ) -> Article:
     return Article(
+        topic_id=DEFAULT_TOPIC_ID,
         id=article_id,
         source_id=_SOURCE_ID,
         url=f"https://example.com/{url_fingerprint}",

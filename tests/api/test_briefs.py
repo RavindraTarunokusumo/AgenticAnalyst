@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID
 
 from conftest import make_client
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
 
 from analyst_engine.domain.models import (
     Article,
@@ -29,6 +30,7 @@ _CREATED_AT = datetime(2026, 7, 14, 8, 0, tzinfo=UTC)
 
 def _list_brief() -> Brief:
     return Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_BRIEF_ID,
         cadence=Cadence.DAILY,
         covered_start=date(2026, 7, 13),
@@ -100,12 +102,14 @@ def test_get_brief_detail_returns_404_for_unknown_id(monkeypatch) -> None:  # ty
 
 def test_get_brief_detail_resolves_citation_joins(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_SOURCE_ID,
         stable_id="ft",
         name="Financial Times",
         normalized_domain="ft.com",
     )
     article = Article(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_ARTICLE_ID,
         source_id=_SOURCE_ID,
         url="https://www.ft.com/content/markets-rally",
@@ -130,6 +134,7 @@ def test_get_brief_detail_resolves_citation_joins(monkeypatch) -> None:  # type:
         ],
     )
     brief = Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_BRIEF_ID,
         cadence=Cadence.DAILY,
         covered_start=date(2026, 7, 13),
@@ -175,6 +180,7 @@ def test_get_brief_detail_degrades_missing_article_citations(monkeypatch) -> Non
         citations=[Citation(article_id=_MISSING_ARTICLE_ID, excerpt="Missing source excerpt.")],
     )
     brief = Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_BRIEF_ID,
         cadence=Cadence.DAILY,
         covered_start=date(2026, 7, 13),

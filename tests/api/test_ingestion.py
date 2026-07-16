@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 from conftest import make_client
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
 
 from analyst_engine.domain.models import ExtractorKind, IngestionAttempt, IngestionStatus
 from analyst_engine.ingestion.models import IngestionResult
@@ -168,6 +169,7 @@ def test_post_ingestion_files_maps_oversized_upload_failure_from_service(monkeyp
 def test_get_ingestion_attempts_returns_recent_attempts(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     started = datetime(2026, 7, 14, 10, 0, tzinfo=UTC)
     attempt = IngestionAttempt(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_ATTEMPT_ID,
         source_id=_SOURCE_ID,
         requested_url="https://example.com/story",

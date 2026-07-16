@@ -10,7 +10,11 @@ from uuid import uuid4
 
 import pytest
 from alembic.config import Config
-from fixtures import truncate_domain_tables  # type: ignore[import-not-found]
+from fixtures import (  # type: ignore[import-not-found]
+    DEFAULT_TOPIC_ID,
+    ensure_topic,
+    truncate_domain_tables,
+)
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from alembic import command
@@ -154,6 +158,7 @@ async def test_list_source_feeds_for_source_orders_by_url_and_includes_disabled(
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="api-src-feeds",
         name="API Feeds Source",
         normalized_domain="example.com",
@@ -176,6 +181,7 @@ async def test_list_source_feeds_for_source_orders_by_url_and_includes_disabled(
     ]
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         for feed in feeds:
             await upsert_source_feed(sess, feed)
@@ -237,6 +243,7 @@ async def test_list_ingestion_attempts_filters_status_orders_newest_first_and_cl
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="api-src-attempts",
         name="API Attempts Source",
         normalized_domain="example.com",
@@ -244,18 +251,21 @@ async def test_list_ingestion_attempts_filters_status_orders_newest_first_and_cl
     base_time = datetime(2026, 7, 13, 12, 0, tzinfo=UTC)
     attempts = [
         IngestionAttempt(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             requested_url="https://example.com/old",
             status=IngestionStatus.SUCCEEDED,
             started_at=base_time,
         ),
         IngestionAttempt(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             requested_url="https://example.com/new",
             status=IngestionStatus.SUCCEEDED,
             started_at=base_time + timedelta(hours=1),
         ),
         IngestionAttempt(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             requested_url="https://example.com/failed",
             status=IngestionStatus.FAILED,
@@ -264,6 +274,7 @@ async def test_list_ingestion_attempts_filters_status_orders_newest_first_and_cl
     ]
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         for attempt in attempts:
             await record_ingestion_attempt(sess, attempt)
@@ -286,6 +297,7 @@ async def test_get_batch_summaries_by_ids_bulk_lookup_and_empty_input(
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="api-src-summaries",
         name="API Summaries Source",
         normalized_domain="example.com",
@@ -293,6 +305,7 @@ async def test_get_batch_summaries_by_ids_bulk_lookup_and_empty_input(
     now = datetime(2026, 7, 13, 12, 0, tzinfo=UTC)
     articles = [
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url=f"https://example.com/s{i}",
             url_fingerprint=f"fp-s{i}",
@@ -334,6 +347,7 @@ async def test_get_batch_summaries_by_ids_bulk_lookup_and_empty_input(
     ]
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         for article in articles:
             await save_article(sess, article)

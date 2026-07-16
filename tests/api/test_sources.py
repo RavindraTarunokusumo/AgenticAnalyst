@@ -7,6 +7,7 @@ from uuid import UUID
 
 import pytest
 from conftest import make_client
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
 
 from analyst_engine.domain.models import Source, SourceFeed
 
@@ -16,6 +17,7 @@ _FEED_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 
 def _persisted_source() -> Source:
     return Source(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_SOURCE_ID,
         stable_id="reuters",
         name="Reuters",
@@ -56,6 +58,7 @@ def test_post_sources_succeeds_without_api_key_when_unauthenticated_write_allowe
     response = client.post(
         "/sources",
         json={
+            "topic_id": str(DEFAULT_TOPIC_ID),
             "stable_id": "reuters",
             "name": "Reuters",
             "normalized_domain": "reuters.com",
@@ -90,6 +93,7 @@ def test_post_sources_returns_401_without_api_key_when_auth_required(monkeypatch
     response = client.post(
         "/sources",
         json={
+            "topic_id": str(DEFAULT_TOPIC_ID),
             "stable_id": "reuters",
             "name": "Reuters",
             "normalized_domain": "reuters.com",
@@ -113,6 +117,7 @@ def test_post_sources_rejects_private_feed_url_before_persistence(monkeypatch) -
     response = client.post(
         "/sources",
         json={
+            "topic_id": str(DEFAULT_TOPIC_ID),
             "stable_id": "reuters",
             "name": "Reuters",
             "normalized_domain": "reuters.com",

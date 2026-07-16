@@ -280,7 +280,9 @@ def test_prompt_injection_defense_in_system_message() -> None:
 
 def test_build_batch_summary_messages_delimits_each_article() -> None:
     articles, source, _batch = _fixture_articles()
-    batch_articles = [(article, source) for article in articles]
+    batch_articles: list[tuple[Article, Source | None]] = [
+        (article, source) for article in articles
+    ]
     messages = build_batch_summary_messages(
         batch_articles,
         prompt_version=_PROMPT_VERSION,

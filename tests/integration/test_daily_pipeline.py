@@ -35,11 +35,18 @@ from analyst_engine.workflows.runner import WorkflowRunner
 
 try:
     from fixtures import (  # type: ignore[import-not-found]
+        DEFAULT_TOPIC_ID,
         docker_endpoint_available,
+        ensure_topic,
         truncate_domain_tables,
     )
 except ImportError:  # pragma: no cover
-    from tests.fixtures import docker_endpoint_available, truncate_domain_tables
+    from tests.fixtures import (
+        DEFAULT_TOPIC_ID,
+        docker_endpoint_available,
+        ensure_topic,
+        truncate_domain_tables,
+    )
 
 try:
     from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
@@ -220,6 +227,7 @@ async def _seed_eligible_articles(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> Source:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="pipeline-integration-src",
         name="Integration Source",
         normalized_domain="example.com",
@@ -227,6 +235,7 @@ async def _seed_eligible_articles(
     published_at = datetime.combine(_TARGET_DATE, datetime.min.time(), tzinfo=UTC)
     articles = [
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url=f"https://example.com/integration-{index}",
             url_fingerprint=f"fp-integration-{index}",
@@ -238,6 +247,7 @@ async def _seed_eligible_articles(
         for index in range(1, 4)
     ]
     async with session_scope(session_factory) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         for article in articles:
             await save_article(sess, article)
@@ -257,7 +267,7 @@ async def test_daily_pipeline_persists_brief_and_is_idempotent_on_rerun(
         gateway=gateway,
     )
 
-    first = await pipeline.run(_TARGET_DATE)
+    first = await pipeline.run(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
     assert first.is_no_content is False
     assert first.workflow_run_id is not None
@@ -265,7 +275,9 @@ async def test_daily_pipeline_persists_brief_and_is_idempotent_on_rerun(
     assert gateway.call_count == 2
 
     async with session_scope(migrated) as sess:
-        brief = await get_brief_by_cadence_interval(sess, Cadence.DAILY, _TARGET_DATE, _TARGET_DATE)
+        brief = await get_brief_by_cadence_interval(
+            sess, Cadence.DAILY, _TARGET_DATE, _TARGET_DATE, topic_id=DEFAULT_TOPIC_ID
+        )
         assert brief is not None
         assert brief.id == first.brief_id
         assert brief.narrative_state_version_id is not None
@@ -276,7 +288,7 @@ async def test_daily_pipeline_persists_brief_and_is_idempotent_on_rerun(
         ).scalar_one_or_none()
         assert narrative is not None
 
-    second = await pipeline.run(_TARGET_DATE)
+    second = await pipeline.run(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
     assert second.workflow_run_id == first.workflow_run_id
     assert second.brief_id == first.brief_id

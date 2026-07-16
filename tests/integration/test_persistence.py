@@ -19,7 +19,11 @@ from datetime import UTC, date, datetime
 
 import pytest
 from alembic.config import Config
-from fixtures import docker_endpoint_available  # type: ignore[import-not-found]
+from fixtures import (  # type: ignore[import-not-found]
+    DEFAULT_TOPIC_ID,
+    docker_endpoint_available,
+    ensure_topic,
+)
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -171,12 +175,14 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
 
     # Build citation path: source -> 3 articles (domain min 3-5) -> batch -> summary -> brief
     now = datetime.now(UTC)
-    source = Source(  # type: ignore[call-arg, unused-ignore]
+    source = Source(
+        topic_id=DEFAULT_TOPIC_ID,  # type: ignore[call-arg, unused-ignore]
         stable_id="test-src",
         name="Test Source",
         normalized_domain="example.com",
     )
     article1 = Article(
+        topic_id=DEFAULT_TOPIC_ID,
         source_id=source.id,
         url="https://example.com/a1",
         url_fingerprint="fp-a1",
@@ -185,6 +191,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         cleaned_content="Clean body one.",
     )
     article2 = Article(
+        topic_id=DEFAULT_TOPIC_ID,
         source_id=source.id,
         url="https://example.com/a2",
         url_fingerprint="fp-a2",
@@ -193,6 +200,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         cleaned_content="Clean body two.",
     )
     article3 = Article(
+        topic_id=DEFAULT_TOPIC_ID,
         source_id=source.id,
         url="https://example.com/a3",
         url_fingerprint="fp-a3",
@@ -218,6 +226,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
         ],
     )
     brief = Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         cadence=Cadence.DAILY,
         covered_start=date.today(),
         covered_end=date.today(),
@@ -233,6 +242,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
     )
 
     async with session_scope(session_factory) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         await save_article(sess, article1)
         await save_article(sess, article2)
@@ -252,7 +262,7 @@ async def test_blank_db_applies_migrations_and_basic_citation_path(
     # Brief + citation path
     async with session_scope(session_factory) as sess:
         found_brief = await get_brief_by_cadence_interval(
-            sess, Cadence.DAILY, date.today(), date.today()
+            sess, Cadence.DAILY, date.today(), date.today(), topic_id=DEFAULT_TOPIC_ID
         )
         assert found_brief is not None
         assert found_brief.id == brief.id

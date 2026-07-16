@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import pytest
 from alembic.config import Config
-from fixtures import truncate_domain_tables  # type: ignore[import-not-found]
+from fixtures import ensure_topic, truncate_domain_tables  # type: ignore[import-not-found]
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from alembic import command
@@ -271,6 +271,7 @@ async def test_delete_topic_with_sources_attached_raises_topic_in_use(
 
     async with session_scope(migrated) as sess:
         await create_topic(sess, topic)
+        await ensure_topic(sess)
         await upsert_source(sess, source)
 
     # Separate session: IntegrityError from RESTRICT leaves the session
@@ -327,6 +328,7 @@ async def test_list_sources_for_topic_filters_and_orders_by_stable_id(
     async with session_scope(migrated) as sess:
         await create_topic(sess, topic_a)
         await create_topic(sess, topic_b)
+        await ensure_topic(sess)
         for source in sources:
             await upsert_source(sess, source)
         listed_a = await list_sources_for_topic(sess, topic_a.id)

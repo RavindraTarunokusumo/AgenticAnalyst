@@ -10,7 +10,7 @@ from typing import Any, Protocol
 
 import pytest
 import pytest_asyncio
-from fixtures import docker_endpoint_available  # type: ignore[import-not-found]
+from fixtures import DEFAULT_TOPIC_ID, docker_endpoint_available  # type: ignore[import-not-found]
 from langgraph.graph import END, StateGraph
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -244,7 +244,7 @@ async def test_runner_claims_pending_checkpoint_once_and_running_duplicate_does_
     )
     pending = WorkflowRun(
         cadence=Cadence.DAILY,
-        idempotency_key="daily:2026-07-12:2026-07-12",
+        idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:2026-07-12:2026-07-12",
         checkpoint_ref="resume-thread",
     )
     async with session_scope(workflow_session_factory) as session:
@@ -279,9 +279,11 @@ async def test_runner_claims_pending_checkpoint_once_and_running_duplicate_does_
         partial(get_async_checkpointer, settings),
     )
 
-    first_task = asyncio.create_task(runner.run_daily(date(2026, 7, 12)))
+    first_task = asyncio.create_task(runner.run_daily(date(2026, 7, 12), topic_id=DEFAULT_TOPIC_ID))
     await asyncio.wait_for(entered.wait(), timeout=10)
-    duplicate = await asyncio.wait_for(runner.run_daily(date(2026, 7, 12)), timeout=10)
+    duplicate = await asyncio.wait_for(
+        runner.run_daily(date(2026, 7, 12), topic_id=DEFAULT_TOPIC_ID), timeout=10
+    )
     assert duplicate.status is WorkflowStatus.RUNNING
     assert duplicate.id == pending.id
     assert invocations == 1

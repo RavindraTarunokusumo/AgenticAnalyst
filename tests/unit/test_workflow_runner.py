@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 import pytest
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
 from langgraph.checkpoint.memory import MemorySaver
 
 from analyst_engine.domain.models import (
@@ -90,7 +91,7 @@ async def test_cadences_invoke_selected_checkpointed_graph_with_stable_identity(
     pending = WorkflowRun(
         id=run_id,
         cadence=cadence,
-        idempotency_key=f"{cadence.value}:{start.isoformat()}:{end.isoformat()}",
+        idempotency_key=f"{cadence.value}:{DEFAULT_TOPIC_ID}:{start.isoformat()}:{end.isoformat()}",
     )
     running = pending.model_copy(
         update={"status": WorkflowStatus.RUNNING, "checkpoint_ref": str(run_id)}
@@ -110,7 +111,9 @@ async def test_cadences_invoke_selected_checkpointed_graph_with_stable_identity(
         | {cadence: Mock(return_value=selected)},
     )
 
-    result = await getattr(runner, method)(target, batch_summaries=[_summary()])
+    result = await getattr(runner, method)(
+        target, topic_id=DEFAULT_TOPIC_ID, batch_summaries=[_summary()]
+    )
 
     assert result.status is WorkflowStatus.SUCCEEDED
     assert selected.checkpointers == ["postgres-checkpointer"]
@@ -118,7 +121,13 @@ async def test_cadences_invoke_selected_checkpointed_graph_with_stable_identity(
     assert state["run_id"] == str(run_id)
     assert state["correlation_id"] == str(run_id)
     assert state["cadence"] == cadence.value
-    assert config == {"configurable": {"thread_id": str(run_id), "checkpoint_ns": cadence.value}}
+    assert state["topic_id"] == str(DEFAULT_TOPIC_ID)
+    assert config == {
+        "configurable": {
+            "thread_id": str(run_id),
+            "checkpoint_ns": f"{cadence.value}:{DEFAULT_TOPIC_ID}",
+        }
+    }
     other.assert_not_called()
 
 
@@ -128,14 +137,14 @@ async def test_terminal_duplicate_returns_without_graph_invocation(
     runner = _runner()
     existing = WorkflowRun(
         cadence=Cadence.DAILY,
-        idempotency_key="daily:2026-07-12:2026-07-12",
+        idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:2026-07-12:2026-07-12",
         status=WorkflowStatus.SUCCEEDED,
     )
     builder = Mock()
     monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=existing))
     monkeypatch.setattr("analyst_engine.workflows.runner.GRAPH_BUILDERS", {Cadence.DAILY: builder})
 
-    assert await runner.run_daily(date(2026, 7, 12)) == existing
+    assert await runner.run_daily(date(2026, 7, 12), topic_id=DEFAULT_TOPIC_ID) == existing
     builder.assert_not_called()
 
 
@@ -145,7 +154,7 @@ async def test_pending_run_starts_or_resumes_same_checkpoint(
     runner = _runner()
     run = WorkflowRun(
         cadence=Cadence.DAILY,
-        idempotency_key="daily:2026-07-12:2026-07-12",
+        idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:2026-07-12:2026-07-12",
         status=WorkflowStatus.PENDING,
     )
     running = run.model_copy(
@@ -163,7 +172,9 @@ async def test_pending_run_starts_or_resumes_same_checkpoint(
         {Cadence.DAILY: Mock(return_value=_GraphBuilder(compiled))},
     )
 
-    await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
+    await runner.run_daily(
+        date(2026, 7, 12), batch_summaries=[_summary()], topic_id=DEFAULT_TOPIC_ID
+    )
 
     assert compiled.calls[0][1]["configurable"]["thread_id"] == str(run.id)
     assert update.await_args_list[0].args[0].status is WorkflowStatus.SUCCEEDED
@@ -175,14 +186,14 @@ async def test_running_duplicate_returns_without_invoking_graph(
     runner = _runner()
     running = WorkflowRun(
         cadence=Cadence.DAILY,
-        idempotency_key="daily:2026-07-12:2026-07-12",
+        idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:2026-07-12:2026-07-12",
         status=WorkflowStatus.RUNNING,
     )
     builder = Mock()
     monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=running))
     monkeypatch.setattr("analyst_engine.workflows.runner.GRAPH_BUILDERS", {Cadence.DAILY: builder})
 
-    assert await runner.run_daily(date(2026, 7, 12)) == running
+    assert await runner.run_daily(date(2026, 7, 12), topic_id=DEFAULT_TOPIC_ID) == running
     builder.assert_not_called()
 
 
@@ -190,7 +201,9 @@ async def test_graph_failure_is_durably_failed_and_reraised(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runner = _runner()
-    run = WorkflowRun(cadence=Cadence.DAILY, idempotency_key="daily:2026-07-12:2026-07-12")
+    run = WorkflowRun(
+        cadence=Cadence.DAILY, idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:2026-07-12:2026-07-12"
+    )
     running = run.model_copy(
         update={"status": WorkflowStatus.RUNNING, "checkpoint_ref": str(run.id)}
     )
@@ -207,7 +220,9 @@ async def test_graph_failure_is_durably_failed_and_reraised(
     )
 
     with pytest.raises(RetryableModelError, match="secret provider payload"):
-        await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
+        await runner.run_daily(
+            date(2026, 7, 12), batch_summaries=[_summary()], topic_id=DEFAULT_TOPIC_ID
+        )
 
     failure = update.await_args_list[0].args[0]
     assert failure.status is WorkflowStatus.FAILED
@@ -225,7 +240,9 @@ async def test_checkpoint_context_failure_never_marks_run_succeeded(
         yield
 
     runner = WorkflowRunner(Mock(), Mock(), Mock(), broken_checkpointer)
-    run = WorkflowRun(cadence=Cadence.DAILY, idempotency_key="daily:2026-07-12:2026-07-12")
+    run = WorkflowRun(
+        cadence=Cadence.DAILY, idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:2026-07-12:2026-07-12"
+    )
     running = run.model_copy(
         update={"status": WorkflowStatus.RUNNING, "checkpoint_ref": str(run.id)}
     )
@@ -237,7 +254,9 @@ async def test_checkpoint_context_failure_never_marks_run_succeeded(
     monkeypatch.setattr(runner, "_update_run", update)
 
     with pytest.raises(RuntimeError, match="database password"):
-        await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
+        await runner.run_daily(
+            date(2026, 7, 12), batch_summaries=[_summary()], topic_id=DEFAULT_TOPIC_ID
+        )
 
     assert [call.args[0].status for call in update.await_args_list] == [WorkflowStatus.FAILED]
 
@@ -246,7 +265,9 @@ async def test_context_database_failure_marks_claimed_run_failed_and_reraises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runner = _runner()
-    run = WorkflowRun(cadence=Cadence.DAILY, idempotency_key="daily:2026-07-12:2026-07-12")
+    run = WorkflowRun(
+        cadence=Cadence.DAILY, idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:2026-07-12:2026-07-12"
+    )
     running = run.model_copy(update={"status": WorkflowStatus.RUNNING})
     failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
     monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
@@ -260,7 +281,7 @@ async def test_context_database_failure_marks_claimed_run_failed_and_reraises(
     monkeypatch.setattr("analyst_engine.workflows.runner.GRAPH_BUILDERS", {Cadence.DAILY: builder})
 
     with pytest.raises(RuntimeError, match="database password"):
-        await runner.run_daily(date(2026, 7, 12))
+        await runner.run_daily(date(2026, 7, 12), topic_id=DEFAULT_TOPIC_ID)
 
     builder.assert_not_called()
     attempted = update.await_args_list[0].args[0]
@@ -277,7 +298,9 @@ async def test_terminal_or_malformed_provider_output_is_failed_and_reraised(
     monkeypatch: pytest.MonkeyPatch, error: Exception
 ) -> None:
     runner = _runner()
-    run = WorkflowRun(cadence=Cadence.DAILY, idempotency_key="daily:2026-07-12:2026-07-12")
+    run = WorkflowRun(
+        cadence=Cadence.DAILY, idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:2026-07-12:2026-07-12"
+    )
     running = run.model_copy(update={"status": WorkflowStatus.RUNNING})
     failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
     monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
@@ -291,7 +314,9 @@ async def test_terminal_or_malformed_provider_output_is_failed_and_reraised(
     )
 
     with pytest.raises(type(error)):
-        await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
+        await runner.run_daily(
+            date(2026, 7, 12), batch_summaries=[_summary()], topic_id=DEFAULT_TOPIC_ID
+        )
 
     statuses = [call.args[0].status for call in update.await_args_list]
     assert statuses == [WorkflowStatus.FAILED]
@@ -304,7 +329,9 @@ async def test_success_lifecycle_update_failure_attempts_failed_and_reraises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runner = _runner()
-    run = WorkflowRun(cadence=Cadence.DAILY, idempotency_key="daily:2026-07-12:2026-07-12")
+    run = WorkflowRun(
+        cadence=Cadence.DAILY, idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:2026-07-12:2026-07-12"
+    )
     running = run.model_copy(update={"status": WorkflowStatus.RUNNING})
     failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
     compiled = _CompiledGraph()
@@ -319,7 +346,9 @@ async def test_success_lifecycle_update_failure_attempts_failed_and_reraises(
     )
 
     with pytest.raises(RuntimeError, match="database password"):
-        await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
+        await runner.run_daily(
+            date(2026, 7, 12), batch_summaries=[_summary()], topic_id=DEFAULT_TOPIC_ID
+        )
 
     assert len(compiled.calls) == 1
     assert [call.args[0].status for call in update.await_args_list] == [
@@ -359,7 +388,9 @@ async def test_analytical_commit_failure_rolls_back_and_marks_run_failed(
         yield MemorySaver()
 
     runner = WorkflowRunner(Mock(), gateway, session_factory, checkpointer_factory)
-    run = WorkflowRun(cadence=Cadence.DAILY, idempotency_key="daily:2026-07-12:2026-07-12")
+    run = WorkflowRun(
+        cadence=Cadence.DAILY, idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:2026-07-12:2026-07-12"
+    )
     running = run.model_copy(update={"status": WorkflowStatus.RUNNING})
     failed = running.model_copy(update={"status": WorkflowStatus.FAILED})
     monkeypatch.setattr(runner, "_ensure_run", AsyncMock(return_value=run))
@@ -377,7 +408,9 @@ async def test_analytical_commit_failure_rolls_back_and_marks_run_failed(
     )
 
     with pytest.raises(RuntimeError, match="database password"):
-        await runner.run_daily(date(2026, 7, 12), batch_summaries=[_summary()])
+        await runner.run_daily(
+            date(2026, 7, 12), batch_summaries=[_summary()], topic_id=DEFAULT_TOPIC_ID
+        )
 
     save_narrative.assert_awaited_once()
     save_brief.assert_awaited_once()

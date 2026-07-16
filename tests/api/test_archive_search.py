@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID
 
 from conftest import make_client, make_runtime, make_settings
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
 
 from analyst_engine.domain.models import Brief, Cadence, Embedding
 from analyst_engine.models.gateway import ModelUsage, RetryableModelError, TerminalModelError
@@ -19,6 +20,7 @@ _QUERY_VECTOR = [1.0] + [0.0] * 1535
 
 def _brief() -> Brief:
     return Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_BRIEF_ID,
         cadence=Cadence.DAILY,
         covered_start=date(2026, 7, 13),

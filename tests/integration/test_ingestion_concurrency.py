@@ -11,7 +11,11 @@ from uuid import UUID, uuid4
 
 import pytest
 from alembic.config import Config
-from fixtures import truncate_domain_tables  # type: ignore[import-not-found]
+from fixtures import (  # type: ignore[import-not-found]
+    DEFAULT_TOPIC_ID,
+    ensure_topic,
+    truncate_domain_tables,
+)
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -164,9 +168,11 @@ async def test_concurrent_duplicate_url_ingestion_records_one_article_and_mixed_
 ) -> None:
     source_id = uuid4()
     async with session_scope(migrated) as session:
+        await ensure_topic(session)
         await upsert_source(
             session,
             Source(
+                topic_id=DEFAULT_TOPIC_ID,
                 id=source_id,
                 stable_id="race-source",
                 name="Race Source",
@@ -181,12 +187,13 @@ async def test_concurrent_duplicate_url_ingestion_records_one_article_and_mixed_
         fallback_extractor=_RaceExtractor(),
         settings=test_settings,
         file_extractors={},
+        is_relevant=lambda keywords, *fields: True,
         clock=lambda: datetime(2026, 7, 14, 12, 0, tzinfo=UTC),
     )
 
     results = await asyncio.gather(
-        service.ingest_urls(source_id, [_ARTICLE_URL]),
-        service.ingest_urls(source_id, [_ARTICLE_URL]),
+        service.ingest_urls(DEFAULT_TOPIC_ID, [_ARTICLE_URL]),
+        service.ingest_urls(DEFAULT_TOPIC_ID, [_ARTICLE_URL]),
     )
     flat_results = [item for batch in results for item in batch]
 
