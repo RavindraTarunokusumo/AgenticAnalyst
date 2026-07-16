@@ -29,7 +29,7 @@ def _make_pdf_bytes(text: str = "", *, title: str | None = None) -> bytes:
         resources = page[NameObject("/Resources")]
         font_dict = DictionaryObject()
         font_dict[NameObject("/F1")] = font_ref
-        resources[NameObject("/Font")] = font_dict
+        resources[NameObject("/Font")] = font_dict  # type: ignore[index]
 
         content = ContentStream(None, writer)
         content.set_data(f"BT /F1 24 Tf 20 150 Td ({text}) Tj ET".encode())

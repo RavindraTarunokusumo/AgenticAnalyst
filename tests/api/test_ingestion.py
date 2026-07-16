@@ -129,16 +129,14 @@ def test_post_ingestion_files_requires_auth_and_maps_result(monkeypatch) -> None
     )
 
 
-def test_post_ingestion_files_rejects_oversized_upload_without_calling_service(
-    monkeypatch,  # type: ignore[no-untyped-def]
-) -> None:
+def test_post_ingestion_files_rejects_oversized_upload_without_calling_service(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     ingestion_service = Mock(ingest_file=AsyncMock())
     client = make_client(
         monkeypatch,
         allow_unauthenticated_write=True,
         ingestion_service=ingestion_service,
     )
-    client.app.state.runtime.settings.article_max_response_size_bytes = 4  # type: ignore[attr-defined]
+    client.app.state.runtime.settings.article_max_response_size_bytes = 4
 
     response = client.post(
         "/ingestion/files",
