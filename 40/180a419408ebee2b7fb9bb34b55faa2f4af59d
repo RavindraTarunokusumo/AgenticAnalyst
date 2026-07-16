@@ -1,0 +1,5 @@
+Task: Post-PR archival
+Summary: Archived the merged Product UI Refinement session (PR #8) to docs/iterations/archive/, removed its Session block from TODO.md, logged the onboarding-personalization gap (raised during manual post-merge review) as a new Future Backlog item.
+Docs: docs/iterations/archive/2026-07-16-product-ui-refinement.md, TODO.md
+TODO: N/A (this commit performs the archival)
+Validation: docs-only change, no code
