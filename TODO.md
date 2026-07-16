@@ -6,6 +6,37 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
+### Session: Topic-First Analyst — Slice 1 (`codex/topic-first-analyst`)
+
+Spec: `docs/iterations/active/2026-07-16-topic-first-analyst.md` (`8e3c6da`, `cdf60ff`)
+Plan: `docs/iterations/active/2026-07-16-topic-first-analyst-plan.md` (`73aa05b`)
+
+Topic becomes the top-level unit: sources are scoped to a topic, fetching is
+keyword-filtered before any model call, and briefs are per-topic. Auto Search
+(SearXNG) is Slice 2; analysis style is Slice 3.
+
+- [ ] **T1** Domain models — `Topic`; `topic_id` on Source/Article/Brief/
+      IngestionAttempt; `Article.source_id` nullable; reject empty `keywords[]`
+- [ ] **T2** Persistence + Alembic migration + Default-topic backfill
+      (needs keywords sentinel — empty is rejected by T1)
+- [ ] **T3** Topic repository (CRUD + `list_sources_for_topic`)
+- [ ] **T4** Keyword matcher (`topics/matcher.py`) + `ArticleCandidate.summary`
+      populated by `parse_feed` (spec §3.4.1 — sets the recall ceiling)
+- [ ] **T5** Ingestion filtering — matcher injected; filter at both asymmetric
+      points; rejected candidates still recorded as observable attempts
+- [ ] **T6** Pipeline scoping — `list_eligible_unbatched_articles` **and**
+      `list_due_source_feeds` gain `topic_id` (spec §4.1); per-topic runs
+- [ ] **T7** Scheduler iterates topics (R5: cadence stays the only trigger)
+- [ ] **T8** `ModelTask.TOPIC_ASSIST` + `topics/prompts.py`
+      (R7a: no hard-coded domain vocabulary)
+- [ ] **T9** API — topics CRUD, `/topics/clarify`, `/topics/suggest-keywords`,
+      `topic_id` on ingestion routes, brief topic filter
+- [ ] **T10** `api.ts` topic types + wrappers
+- [ ] **T11** Guided onboarding UI + editable keyword chips
+- [ ] **T12** Topic settings — edit sources (R6), re-suggest keywords (R8)
+- [ ] **T13** `App.tsx` wiring + topic selection (add dev-proxy prefixes)
+- [ ] **T14** Docs — architecture, database, changelog
+
 ## Future Backlog
 
 Candidate next slices, roughly in suggested priority order. None have a spec
