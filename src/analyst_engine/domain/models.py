@@ -74,12 +74,42 @@ class Citation(BaseModel):
     )
 
 
+class Topic(BaseModel):
+    """User-defined subject of interest; top-level organising unit for sources and briefs."""
+
+    model_config = {"frozen": True}
+
+    id: UUID = Field(default_factory=uuid4)
+    name: str = Field(description="Display label for the topic.")
+    description: str = Field(description="User's free-text statement of interest.")
+    interest_detail: str | None = Field(
+        default=None,
+        description="Captured Q&A from guided onboarding, retained for keyword re-suggestion.",
+    )
+    keywords: list[str] = Field(
+        description="Matching terms used for topic relevance filtering; must be non-empty."
+    )
+    created_at: datetime = Field(default_factory=_utc_now)
+    updated_at: datetime = Field(default_factory=_utc_now)
+
+    @field_validator("keywords")
+    @classmethod
+    def _nonempty_keywords(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("keywords must not be empty")
+        for keyword in v:
+            if not keyword or not keyword.strip():
+                raise ValueError("keywords entries must not be empty or whitespace-only")
+        return v
+
+
 class Source(BaseModel):
     """Registered information source."""
 
     model_config = {"frozen": True}
 
     id: UUID = Field(default_factory=uuid4)
+    topic_id: UUID
     stable_id: str = Field(description="Stable external identifier for the source.")
     name: str
     normalized_domain: str = Field(
@@ -94,7 +124,8 @@ class Article(BaseModel):
     model_config = {"frozen": True}
 
     id: UUID = Field(default_factory=uuid4)
-    source_id: UUID
+    topic_id: UUID
+    source_id: UUID | None = None
     url: str
     url_fingerprint: str = Field(description="Stable hash of normalized URL for deduplication.")
     title: str
@@ -216,6 +247,7 @@ class Brief(BaseModel):
     model_config = {"frozen": True}
 
     id: UUID = Field(default_factory=uuid4)
+    topic_id: UUID
     cadence: Cadence
     covered_start: date
     covered_end: date
@@ -317,6 +349,7 @@ class IngestionAttempt(BaseModel):
     model_config = {"frozen": True}
 
     id: UUID = Field(default_factory=uuid4)
+    topic_id: UUID
     source_id: UUID
     source_feed_id: UUID | None = None
     requested_url: str

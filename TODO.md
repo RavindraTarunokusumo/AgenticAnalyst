@@ -15,7 +15,7 @@ Topic becomes the top-level unit: sources are scoped to a topic, fetching is
 keyword-filtered before any model call, and briefs are per-topic. Auto Search
 (SearXNG) is Slice 2; analysis style is Slice 3.
 
-- [ ] **T1** Domain models — `Topic`; `topic_id` on Source/Article/Brief/
+- [x] **T1** Domain models — `Topic`; `topic_id` on Source/Article/Brief/
       IngestionAttempt; `Article.source_id` nullable; reject empty `keywords[]`
 - [ ] **T2** Persistence + Alembic migration + Default-topic backfill
       (needs keywords sentinel — empty is rejected by T1)
