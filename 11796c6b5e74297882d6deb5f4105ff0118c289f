@@ -1,0 +1,5 @@
+Task: IngestionService refactor + ingest_file
+Summary: Extracted _check_duplicate/_finalize_extracted helpers from _ingest_candidate (pure extract-method, behavior unchanged) and added ingest_file reusing the same race-safe persist path for uploaded files.
+Docs: docs/architecture.md
+TODO: Backend chain - IngestionService refactor
+Validation: pytest tests/unit/test_ingestion_service.py, tests/integration/test_ingestion_concurrency.py (post-harness-fix), mypy, ruff
