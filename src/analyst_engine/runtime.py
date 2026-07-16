@@ -15,6 +15,11 @@ from analyst_engine.config import Settings
 from analyst_engine.domain.models import Cadence
 from analyst_engine.ingestion.extractor import Crawl4AIExtractor, PrimaryHttpExtractor
 from analyst_engine.ingestion.feed_client import FeedClient
+from analyst_engine.ingestion.file_extractor import (
+    FileExtractor,
+    PdfFileExtractor,
+    TextFileExtractor,
+)
 from analyst_engine.ingestion.service import IngestionService
 from analyst_engine.models.factory import create_model_gateway
 from analyst_engine.models.gateway import ModelGateway
@@ -70,12 +75,17 @@ def build_ingestion_service(runtime: RuntimeDependencies) -> IngestionService:
     fallback_extractor = Crawl4AIExtractor(
         timeout_seconds=runtime.settings.feed_request_timeout_seconds,
     )
+    file_extractors: dict[str, FileExtractor] = {
+        "application/pdf": PdfFileExtractor(),
+        "text/plain": TextFileExtractor(),
+    }
     return IngestionService(
         session_factory=runtime.session_factory,
         feed_client=feed_client,
         primary_extractor=primary_extractor,
         fallback_extractor=fallback_extractor,
         settings=runtime.settings,
+        file_extractors=file_extractors,
     )
 
 
