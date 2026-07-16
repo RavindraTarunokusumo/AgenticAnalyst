@@ -1,0 +1,5 @@
+Task: Merge backend chain
+Summary: Merged codex/product-ui-refinement-backend into the integration branch. No conflicts (disjoint files from the frontend chain).
+Docs: N/A
+TODO: N/A (merge)
+Validation: pytest, mypy, ruff re-run post-merge
