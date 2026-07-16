@@ -1,0 +1,5 @@
+Task: Backend tests
+Summary: Unit tests for PdfFileExtractor/TextFileExtractor, ingest_file (success/duplicate/unsupported-type/extraction-failure), and API-level auth/mapping/oversized-upload coverage for the new route. Updated both existing IngestionService constructor call sites for the new required file_extractors param.
+Docs: N/A
+TODO: Backend chain - tests
+Validation: pytest tests/unit tests/api tests/integration, mypy, ruff
