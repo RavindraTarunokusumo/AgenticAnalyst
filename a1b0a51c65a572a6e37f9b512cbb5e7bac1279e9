@@ -1,0 +1,5 @@
+Task: POST /ingestion/files route
+Summary: Added the multipart upload route (source_id + file), oversized-upload rejection before extraction, and runtime.py file_extractors wiring. Required adding python-multipart as a new dependency for FastAPI File/Form.
+Docs: docs/architecture.md
+TODO: Backend chain - POST /ingestion/files route
+Validation: pytest tests/api, mypy, ruff (after adding python-multipart)
