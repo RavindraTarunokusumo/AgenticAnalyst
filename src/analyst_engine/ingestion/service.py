@@ -27,6 +27,8 @@ from analyst_engine.ingestion.models import ArticleCandidate, ExtractedArticle, 
 from analyst_engine.persistence.engine import session_scope
 from analyst_engine.persistence.repositories import (
     get_article_by_fingerprint,
+    get_sources_by_ids,
+    get_topic,
     record_ingestion_attempt,
     save_article,
     upsert_source_feed,
@@ -34,12 +36,21 @@ from analyst_engine.persistence.repositories import (
 
 _ERROR_SUMMARY_MAX_LENGTH = 500
 
+# Distinct attempt error_code for topic relevance drops (spec §6). Rejected
+# candidates must remain observable — silent drops are undebuggable.
+RELEVANCE_REJECTED_ERROR_CODE = "not_relevant"
+
 # Some browser/OS mime-db combinations report an empty or generic content-type
 # for a drag-and-dropped or oddly-associated file even though its extension is
 # unambiguous - fall back to the extension when the reported type doesn't
 # match a registered extractor, rather than rejecting a file the UI's own
 # accept-list allowed.
 _EXTENSION_FALLBACK_CONTENT_TYPES = {".pdf": "application/pdf", ".txt": "text/plain"}
+
+# Injected relevance seam (spec §3.3). Signature matches topics.matcher.matches
+# so the predicate can later be swapped for an LLM/embedding judge without
+# changing IngestionService call sites.
+RelevancePredicate = Callable[..., bool]
 
 
 def _sanitize_error_summary(message: str) -> str:
@@ -65,6 +76,7 @@ class IngestionService:
         fallback_extractor: ArticleExtractor,
         settings: Settings,
         file_extractors: dict[str, FileExtractor],
+        is_relevant: RelevancePredicate,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._session_factory = session_factory
@@ -73,10 +85,12 @@ class IngestionService:
         self._fallback_extractor = fallback_extractor
         self._settings = settings
         self._file_extractors = file_extractors
+        self._is_relevant = is_relevant
         self._clock = clock
 
     async def poll_feed(self, feed: SourceFeed) -> list[IngestionResult]:
         now = self._clock()
+        topic_id, keywords = await self._resolve_feed_topic(feed)
 
         try:
             fetch_result = await self._feed_client.fetch(
@@ -118,8 +132,27 @@ class IngestionService:
 
         results: list[IngestionResult] = []
         for candidate in candidates:
+            # Stage 1 (spec §3.4): title + summary before any article fetch.
+            # A miss is unrecoverable and sets the product's recall ceiling.
+            if not self._is_relevant(keywords, candidate.title, candidate.summary):
+                result = await self._record_failure(
+                    candidate,
+                    None,
+                    None,
+                    RELEVANCE_REJECTED_ERROR_CODE,
+                    "candidate title/summary did not match topic keywords",
+                    now,
+                    topic_id=topic_id,
+                )
+                results.append(result)
+                continue
+
             try:
-                result = await self._ingest_candidate(candidate)
+                result = await self._ingest_candidate(
+                    candidate,
+                    topic_id=topic_id,
+                    keywords=keywords,
+                )
             except Exception:
                 result = IngestionResult(
                     candidate_url=candidate.url,
@@ -131,11 +164,17 @@ class IngestionService:
             results.append(result)
         return results
 
-    async def ingest_urls(self, source_id: UUID, urls: list[str]) -> list[IngestionResult]:
+    async def ingest_urls(self, topic_id: UUID, urls: list[str]) -> list[IngestionResult]:
+        """Ingest user-pasted URLs into a topic's article pool (no relevance filter).
+
+        Direct adds set ``source_id=None`` (spec §3.2) and do not apply the
+        poll_feed relevance filter — the user explicitly chose each URL (R4).
+        Does not trigger a briefing run (R5).
+        """
         results: list[IngestionResult] = []
         for url in urls:
             candidate = ArticleCandidate(
-                source_id=source_id,
+                source_id=None,
                 source_feed_id=None,
                 url=url,
                 title=None,
@@ -145,7 +184,12 @@ class IngestionService:
                 summary=None,
             )
             try:
-                result = await self._ingest_candidate(candidate)
+                # keywords=None: no stage-1/stage-2 filter on deliberate user adds.
+                result = await self._ingest_candidate(
+                    candidate,
+                    topic_id=topic_id,
+                    keywords=None,
+                )
             except Exception:
                 result = IngestionResult(
                     candidate_url=url,
@@ -159,16 +203,21 @@ class IngestionService:
 
     async def ingest_file(
         self,
-        source_id: UUID,
+        topic_id: UUID,
         filename: str,
         content: bytes,
         content_type: str,
     ) -> IngestionResult:
+        """Ingest an uploaded file into a topic's article pool (no relevance filter).
+
+        Direct adds set ``source_id=None`` (spec §3.2). Does not trigger a
+        briefing run (R5).
+        """
         started_at = self._clock()
         content_hash = hashlib.sha256(content).hexdigest()
         url = f"upload://{content_hash}"
         candidate = ArticleCandidate(
-            source_id=source_id,
+            source_id=None,
             source_feed_id=None,
             url=url,
             title=None,
@@ -189,9 +238,12 @@ class IngestionService:
                     f"{self._settings.article_max_response_size_bytes} bytes"
                 ),
                 started_at,
+                topic_id=topic_id,
             )
 
-        duplicate_result = await self._check_duplicate(candidate, url, content_hash, started_at)
+        duplicate_result = await self._check_duplicate(
+            candidate, url, content_hash, started_at, topic_id=topic_id
+        )
         if duplicate_result is not None:
             return duplicate_result
 
@@ -208,6 +260,7 @@ class IngestionService:
                 "unsupported_file_type",
                 f"unsupported content type: {content_type}",
                 started_at,
+                topic_id=topic_id,
             )
 
         try:
@@ -220,6 +273,7 @@ class IngestionService:
                 "extraction_failed",
                 str(exc),
                 started_at,
+                topic_id=topic_id,
             )
         except Exception as exc:
             # Malformed input can make pypdf raise something other than its own
@@ -234,6 +288,7 @@ class IngestionService:
                 "extraction_failed",
                 _failure_summary_from_exception(exc),
                 started_at,
+                topic_id=topic_id,
             )
 
         # Uploaded files carry no publish-date metadata (spec §4.1); the
@@ -241,7 +296,28 @@ class IngestionService:
         if extracted.published_at is None:
             extracted = replace(extracted, published_at=self._clock())
 
-        return await self._finalize_extracted(candidate, url, content_hash, extracted, started_at)
+        # keywords=None: no relevance filter on deliberate user uploads.
+        return await self._finalize_extracted(
+            candidate,
+            url,
+            content_hash,
+            extracted,
+            started_at,
+            topic_id=topic_id,
+            keywords=None,
+        )
+
+    async def _resolve_feed_topic(self, feed: SourceFeed) -> tuple[UUID, list[str]]:
+        """Load the feed's source → topic → keywords for relevance filtering."""
+        async with session_scope(self._session_factory) as session:
+            sources = await get_sources_by_ids(session, [feed.source_id])
+            if not sources:
+                raise RuntimeError(f"source not found for feed: source_id={feed.source_id}")
+            source = sources[0]
+            topic = await get_topic(session, source.topic_id)
+            if topic is None:
+                raise RuntimeError(f"topic not found for source: topic_id={source.topic_id}")
+            return topic.id, list(topic.keywords)
 
     async def _update_feed_on_failure(
         self,
@@ -271,7 +347,13 @@ class IngestionService:
         async with session_scope(self._session_factory) as session:
             await upsert_source_feed(session, updated_feed)
 
-    async def _ingest_candidate(self, candidate: ArticleCandidate) -> IngestionResult:
+    async def _ingest_candidate(
+        self,
+        candidate: ArticleCandidate,
+        *,
+        topic_id: UUID,
+        keywords: list[str] | None,
+    ) -> IngestionResult:
         started_at = self._clock()
 
         try:
@@ -287,10 +369,11 @@ class IngestionService:
                 "invalid_url",
                 str(exc),
                 started_at,
+                topic_id=topic_id,
             )
 
         duplicate_result = await self._check_duplicate(
-            candidate, canonical_url, fingerprint, started_at
+            candidate, canonical_url, fingerprint, started_at, topic_id=topic_id
         )
         if duplicate_result is not None:
             return duplicate_result
@@ -321,6 +404,7 @@ class IngestionService:
                 "invalid_url",
                 str(ssrf_exc),
                 started_at,
+                topic_id=topic_id,
             )
         except Exception as primary_exc:
             try:
@@ -341,10 +425,17 @@ class IngestionService:
                         f"fallback extractor failed: {fallback_exc}"
                     ),
                     started_at,
+                    topic_id=topic_id,
                 )
 
         return await self._finalize_extracted(
-            candidate, canonical_url, fingerprint, extracted, started_at
+            candidate,
+            canonical_url,
+            fingerprint,
+            extracted,
+            started_at,
+            topic_id=topic_id,
+            keywords=keywords,
         )
 
     async def _check_duplicate(
@@ -353,12 +444,16 @@ class IngestionService:
         url: str,
         fingerprint: str,
         started_at: datetime,
+        *,
+        topic_id: UUID,
     ) -> IngestionResult | None:
         async with session_scope(self._session_factory) as session:
             existing = await get_article_by_fingerprint(session, fingerprint)
         if existing is None:
             return None
-        return await self._record_duplicate(candidate, url, fingerprint, existing.id, started_at)
+        return await self._record_duplicate(
+            candidate, url, fingerprint, existing.id, started_at, topic_id=topic_id
+        )
 
     async def _finalize_extracted(
         self,
@@ -367,6 +462,9 @@ class IngestionService:
         fingerprint: str,
         extracted: ExtractedArticle,
         started_at: datetime,
+        *,
+        topic_id: UUID,
+        keywords: list[str] | None,
     ) -> IngestionResult:
         title = (extracted.title or "").strip()
         if not title:
@@ -377,6 +475,7 @@ class IngestionService:
                 "missing_title",
                 "extracted title is empty",
                 started_at,
+                topic_id=topic_id,
             )
 
         published_at = candidate.published_at or extracted.published_at
@@ -388,6 +487,7 @@ class IngestionService:
                 "missing_published_at",
                 "no reliable publication time from feed or page metadata",
                 started_at,
+                topic_id=topic_id,
             )
 
         cleaned_text = extracted.text.strip()
@@ -402,9 +502,24 @@ class IngestionService:
                     f"{self._settings.article_min_content_length}"
                 ),
                 started_at,
+                topic_id=topic_id,
+            )
+
+        # Stage 2 (spec §3.4): precision only — drop headline matches whose body
+        # is off-topic. keywords is None for direct user adds (no filter).
+        if keywords is not None and not self._is_relevant(keywords, cleaned_text):
+            return await self._record_failure(
+                candidate,
+                canonical_url,
+                fingerprint,
+                RELEVANCE_REJECTED_ERROR_CODE,
+                "extracted content did not match topic keywords",
+                started_at,
+                topic_id=topic_id,
             )
 
         article = Article(
+            topic_id=topic_id,
             source_id=candidate.source_id,
             url=canonical_url,
             url_fingerprint=fingerprint,
@@ -420,6 +535,7 @@ class IngestionService:
             async with session_scope(self._session_factory) as session:
                 await save_article(session, article)
                 attempt = IngestionAttempt(
+                    topic_id=topic_id,
                     source_id=candidate.source_id,
                     source_feed_id=candidate.source_feed_id,
                     requested_url=candidate.url,
@@ -437,6 +553,7 @@ class IngestionService:
                 winner = await get_article_by_fingerprint(session, fingerprint)
                 winner_id = winner.id if winner is not None else None
                 attempt = IngestionAttempt(
+                    topic_id=topic_id,
                     source_id=candidate.source_id,
                     source_feed_id=candidate.source_feed_id,
                     requested_url=candidate.url,
@@ -493,8 +610,11 @@ class IngestionService:
         error_code: str,
         error_summary: str,
         started_at: datetime,
+        *,
+        topic_id: UUID,
     ) -> IngestionResult:
         attempt = IngestionAttempt(
+            topic_id=topic_id,
             source_id=candidate.source_id,
             source_feed_id=candidate.source_feed_id,
             requested_url=candidate.url,
@@ -523,8 +643,11 @@ class IngestionService:
         fingerprint: str,
         article_id: UUID,
         started_at: datetime,
+        *,
+        topic_id: UUID,
     ) -> IngestionResult:
         attempt = IngestionAttempt(
+            topic_id=topic_id,
             source_id=candidate.source_id,
             source_feed_id=candidate.source_feed_id,
             requested_url=candidate.url,

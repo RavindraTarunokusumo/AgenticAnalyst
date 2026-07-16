@@ -76,6 +76,7 @@ from analyst_engine.persistence.models import (
 def _article_to_orm(a: Article) -> ORMArticle:
     return ORMArticle(
         id=a.id,
+        topic_id=a.topic_id,
         source_id=a.source_id,
         url=a.url,
         url_fingerprint=a.url_fingerprint,
@@ -92,6 +93,7 @@ def _article_to_orm(a: Article) -> ORMArticle:
 def _article_to_domain(row: ORMArticle) -> Article:
     return Article(
         id=row.id,
+        topic_id=row.topic_id,
         source_id=row.source_id,
         url=row.url,
         url_fingerprint=row.url_fingerprint,
@@ -167,6 +169,7 @@ def _source_feed_to_domain(row: ORMSourceFeed) -> SourceFeed:
 def _ingestion_attempt_to_orm(attempt: IngestionAttempt) -> ORMIngestionAttempt:
     return ORMIngestionAttempt(
         id=attempt.id,
+        topic_id=attempt.topic_id,
         source_id=attempt.source_id,
         source_feed_id=attempt.source_feed_id,
         requested_url=attempt.requested_url,
@@ -186,6 +189,7 @@ def _ingestion_attempt_to_orm(attempt: IngestionAttempt) -> ORMIngestionAttempt:
 def _ingestion_attempt_to_domain(row: ORMIngestionAttempt) -> IngestionAttempt:
     return IngestionAttempt(
         id=row.id,
+        topic_id=row.topic_id,
         source_id=row.source_id,
         source_feed_id=row.source_feed_id,
         requested_url=row.requested_url,
