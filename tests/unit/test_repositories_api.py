@@ -25,9 +25,11 @@ from analyst_engine.domain.models import (
     IngestionStatus,
     Source,
     SourceFeed,
+    Topic,
 )
 from analyst_engine.persistence.engine import get_async_engine, get_session_factory, session_scope
 from analyst_engine.persistence.repositories import (
+    create_topic,
     get_batch_summaries_by_ids,
     list_ingestion_attempts,
     list_source_feeds_for_source,
@@ -186,6 +188,48 @@ async def test_list_source_feeds_for_source_orders_by_url_and_includes_disabled(
     ]
     assert {feed.enabled for feed in listed} == {True, False}
     assert empty == []
+
+
+@pytest.mark.asyncio
+async def test_record_source_less_ingestion_attempt_round_trips(
+    migrated: async_sessionmaker[AsyncSession],
+) -> None:
+    """Regression: pasted-link / upload attempts have topic_id and null source_id.
+
+    T5 domain allowed source_id=None, but the ORM/migration left the column
+    NOT NULL. Unit tests that fake persistence never hit Postgres; this test
+    exercises the real repository path.
+    """
+    topic = Topic(
+        name="Direct-add topic",
+        description="Topic for source-less ingestion attempts",
+        keywords=["direct", "paste"],
+    )
+    attempt = IngestionAttempt(
+        topic_id=topic.id,
+        source_id=None,
+        requested_url="https://example.com/pasted-link",
+        canonical_url="https://example.com/pasted-link",
+        url_fingerprint="fp-pasted-link",
+        status=IngestionStatus.SUCCEEDED,
+        started_at=datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+        completed_at=datetime(2026, 7, 16, 12, 0, 1, tzinfo=UTC),
+    )
+
+    async with session_scope(migrated) as sess:
+        await create_topic(sess, topic)
+        saved = await record_ingestion_attempt(sess, attempt)
+        listed = await list_ingestion_attempts(sess, limit=10)
+
+    assert saved.id == attempt.id
+    assert saved.topic_id == topic.id
+    assert saved.source_id is None
+    assert saved.requested_url == "https://example.com/pasted-link"
+    assert saved.status is IngestionStatus.SUCCEEDED
+    assert len(listed) == 1
+    assert listed[0].id == attempt.id
+    assert listed[0].source_id is None
+    assert listed[0].topic_id == topic.id
 
 
 @pytest.mark.asyncio

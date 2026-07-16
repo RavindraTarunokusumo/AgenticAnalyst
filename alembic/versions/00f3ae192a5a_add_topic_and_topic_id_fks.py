@@ -33,8 +33,9 @@ def upgrade() -> None:
 
     Order is load-bearing: create table -> insert Default with non-empty
     keywords -> add nullable topic_id columns -> backfill existing rows ->
-    only then set NOT NULL / FKs. Making article.source_id nullable supports
-    source-less direct article inputs (pasted links / uploads).
+    only then set NOT NULL / FKs. Making article.source_id and
+    ingestion_attempt.source_id nullable supports source-less direct inputs
+    (pasted links / uploads; spec §3.2).
     """
     op.create_table(
         "topic",
@@ -89,10 +90,22 @@ def upgrade() -> None:
     op.alter_column(
         "article", "source_id", existing_type=postgresql.UUID(as_uuid=True), nullable=True
     )
+    op.alter_column(
+        "ingestion_attempt",
+        "source_id",
+        existing_type=postgresql.UUID(as_uuid=True),
+        nullable=True,
+    )
 
 
 def downgrade() -> None:
     """Reverse topic_id columns and the topic table."""
+    op.alter_column(
+        "ingestion_attempt",
+        "source_id",
+        existing_type=postgresql.UUID(as_uuid=True),
+        nullable=False,
+    )
     op.alter_column(
         "article", "source_id", existing_type=postgresql.UUID(as_uuid=True), nullable=False
     )
