@@ -1,0 +1,5 @@
+Task: App.tsx final wiring
+Summary: Wired Onboarding/AddContentPanel/ApiKeySettings/RecentActivityList together in App.tsx (apiKey state seeded from localStorage, recent-activity refetch after each submission).
+Docs: N/A
+TODO: Frontend chain - App.tsx wiring
+Validation: npm run lint, npm run build
