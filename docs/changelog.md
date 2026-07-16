@@ -2,6 +2,15 @@
 
 Record notable behavior, architecture, API, persistence, or workflow changes.
 
+## 2026-07-16 — Product UI Refinement (onboarding, uploads, add-content)
+
+Summary:
+- What changed: Backend gained `POST /ingestion/files` (multipart, `source_id` + `file`) for manual PDF/plain-text article uploads, backed by a new `FileExtractor` protocol (`PdfFileExtractor`/`TextFileExtractor`, `ingestion/file_extractor.py`) and two new `ExtractorKind` members (`FILE_PDF`/`FILE_TEXT`, additive - no migration). `IngestionService`'s duplicate-check/finalize-persist tail was factored out of `_ingest_candidate` into `_check_duplicate`/`_finalize_extracted` (a pure extract-method refactor, behavior unchanged) so the new `ingest_file` can reuse the same race-safe persistence path; uploads dedup by content-hash via a synthetic `upload://<sha256>` URL and are stamped with ingestion time as `published_at` (no real publish date exists for an upload). Oversized uploads (over `settings.article_max_response_size_bytes`) are rejected before extraction with `status="failed"`/`error_code="file_too_large"` rather than a raw `413`. Frontend gained first-run onboarding (`Onboarding.tsx`, gates the existing 3-panel view behind at least one registered source), a 3-mode add-content panel (paste links / register a feed / upload a file - `AddContentPanel.tsx`, `IngestionResultList.tsx`), a persistent recent-activity view (`RecentActivityList.tsx`, backed by the existing `GET /ingestion/attempts`), and client-held API key settings (`ApiKeySettings.tsx`, `localStorage['ae_api_key']`). The dev-server proxy (`vite.config.ts`) was extended to cover `/sources` and `/ingestion`, not just `/briefs`.
+- Why: The UI was read-only with no onboarding, upload, or write-surface functionality - it didn't look like a usable product. This slice is explicitly functionality-only; visual/design changes were out of scope per product direction.
+- User-visible impact: A fresh install now walks a user through registering a first source before showing the brief viewer; once a source exists, links/feeds/files can be submitted through the UI with per-item result feedback and a running activity log, with no change to the existing read-only brief browsing behavior.
+- Migration notes: None. `ExtractorKind`'s new members are additive against the existing unconstrained `String(32)` column.
+- Related PR/commit: tracked in `docs/superpowers/specs/2026-07-16-product-ui-refinement-design.md` and `docs/superpowers/plans/2026-07-16-product-ui-refinement.md`; see `TODO.md` for commit hashes.
+
 ## 2026-07-15 — Archive Retrieval / Semantic Search
 
 Summary:

@@ -195,6 +195,12 @@ run `npm run build` to replace it with the real SPA. Docker images always
 build the real frontend via the `frontend-build` stage - the placeholder only
 matters for direct (non-Docker) local backend runs.
 
+To exercise onboarding/add-content locally against `npm run dev` without a
+real API key, set `ALLOW_UNAUTHENTICATED_WRITE=true` in the backend's `.env`
+before starting `app` - the write routes (`POST /sources`, `POST /ingestion/
+urls`, `POST /ingestion/files`) then accept requests with no `X-API-Key`
+header. Never enable this outside local development.
+
 ## Database
 
 The Compose stack starts PostgreSQL 16 with pgvector. Migrations are managed by
