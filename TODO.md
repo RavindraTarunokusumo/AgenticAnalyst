@@ -24,15 +24,33 @@ behind this ordering.
       personalization concept (e.g. an analysis-style/tone preference) at
       all. Framed explicitly as a gap for a hackathon demo, not a design
       nitpick - judges will type their own topic and notice it's
-      inexpressible. Suggested prioritization (highest impact per effort
-      first): (1) a "topics of interest" field on the onboarding form,
-      stored on `Source`, used to filter/tag ingested articles against the
-      existing `topics` extraction; (2) a short multi-step guided onboarding
-      flow (source -> topics -> style) instead of one static form, for the
-      "personalization is happening" feel; (3, stretch) an analysis-style
-      toggle threaded into `summarization/prompts.py`'s brief-generation
-      prompt - larger/riskier since it touches the summarization pipeline,
-      not just ingestion. Needs its own spec before scoping.
+      inexpressible. Confirmed by code inspection (2026-07-16) that no layer
+      of the pipeline is topic-aware: `poll_feed` ingests every feed entry
+      indiscriminately (no keyword gate before extraction/persist);
+      `ingest_urls`/`ingest_file` only process exactly what's handed to
+      them (a user can manually curate topic-specific URLs themselves, but
+      the system does no targeting); extraction is pure content-parsing
+      with no relevance scoring; `batching/batcher.py` clusters
+      *already-ingested* articles by title-token similarity, it doesn't
+      filter what gets ingested; and SearXNG is provisioned and running in
+      `compose.yaml` but is not referenced anywhere in the Python source -
+      infrastructure that exists but is completely unwired into ingestion.
+      Suggested prioritization (highest impact per effort first):
+      (1) a "topics of interest" field on the onboarding form, stored on
+      `Source`, used as a keyword/content filter applied at ingestion/poll
+      time (reject candidates whose title/content doesn't match before
+      persisting) - cheapest, and the most direct fix for "only Reuters
+      articles about the US-Iran war," reusing the existing `topics`
+      extraction machinery; (2) a short multi-step guided onboarding flow
+      (source -> topics -> style) instead of one static form, for the
+      "personalization is happening" feel; (3, stretch) wiring SearXNG for
+      actual topic-directed *discovery* within a source (turns "register a
+      feed" into "periodically search this domain for X") - bigger, since
+      it's genuinely new ingestion capability, not just a filter on
+      existing feeds; (4, stretch) an analysis-style toggle threaded into
+      `summarization/prompts.py`'s brief-generation prompt - touches the
+      summarization pipeline, not just ingestion. Needs its own spec before
+      scoping.
 - [ ] **Prediction expectation resolution.** `PredictionExpectation` rows
       are created by the frontier synthesis graph (`proposed_expectations`)
       with `outcome_status`, but nothing ever revisits and updates that
