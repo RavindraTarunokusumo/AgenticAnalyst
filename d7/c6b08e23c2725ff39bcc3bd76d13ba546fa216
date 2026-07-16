@@ -1,0 +1,5 @@
+Task: code review response - frontend fixes
+Summary: Verified and fixed 2 frontend findings from the same review (status-string mismatch causing miscolored success results; silent no-op on a whitespace-only links submission).
+Docs: N/A
+TODO: N/A (post-PR review response)
+Validation: npm run lint, npm run build
