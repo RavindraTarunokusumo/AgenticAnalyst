@@ -1,5 +1,5 @@
-// Typed fetch wrappers for the two existing read routes this viewer consumes.
-// Field names/types mirror BriefListItemResponse/BriefDetailResponse exactly
+// Typed fetch wrappers for the routes this viewer consumes (briefs, sources,
+// ingestion). Field names/types mirror the Pydantic response models exactly
 // (src/analyst_engine/api/app.py) - update here if those response models change.
 
 export type Cadence = 'daily' | 'weekly' | 'monthly'
@@ -43,6 +43,61 @@ export interface BriefDetail {
   cited_summaries: ResolvedBatchSummary[]
 }
 
+export interface FeedHealth {
+  id: string
+  feed_url: string
+  enabled: boolean
+  poll_interval_minutes: number
+  last_polled_at: string | null
+  last_success_at: string | null
+  last_error_summary: string | null
+}
+
+export interface Source {
+  id: string
+  stable_id: string
+  name: string
+  normalized_domain: string
+  feeds: FeedHealth[]
+}
+
+export interface RegisterFeedRequest {
+  feed_url: string
+  enabled?: boolean
+  poll_interval_minutes?: number
+}
+
+export interface RegisterSourceRequest {
+  stable_id: string
+  name: string
+  normalized_domain: string
+  feeds: RegisterFeedRequest[]
+}
+
+export interface IngestionResult {
+  candidate_url: string
+  status: string
+  article_id: string | null
+  error_code: string | null
+  error_summary: string | null
+}
+
+export interface IngestionAttempt {
+  id: string
+  source_id: string
+  source_feed_id: string | null
+  requested_url: string
+  canonical_url: string | null
+  status: string
+  http_status: number | null
+  extractor: string | null
+  article_id: string | null
+  error_code: string | null
+  error_summary: string | null
+  started_at: string
+  completed_at: string | null
+}
+
 async function parseErrorDetail(response: Response): Promise<string> {
   try {
     const body: unknown = await response.json()
@@ -76,4 +131,71 @@ export async function fetchBriefDetail(id: string): Promise<BriefDetail> {
     throw new Error(await parseErrorDetail(response))
   }
   return (await response.json()) as BriefDetail
+}
+
+export async function fetchSources(): Promise<Source[]> {
+  const response = await fetch('/sources')
+  if (!response.ok) {
+    throw new Error(await parseErrorDetail(response))
+  }
+  return (await response.json()) as Source[]
+}
+
+export async function registerSource(
+  apiKey: string,
+  req: RegisterSourceRequest,
+): Promise<Source> {
+  const response = await fetch('/sources', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+    body: JSON.stringify(req),
+  })
+  if (!response.ok) {
+    throw new Error(await parseErrorDetail(response))
+  }
+  return (await response.json()) as Source
+}
+
+export async function ingestUrls(
+  apiKey: string,
+  sourceId: string,
+  urls: string[],
+): Promise<IngestionResult[]> {
+  const response = await fetch('/ingestion/urls', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+    body: JSON.stringify({ source_id: sourceId, urls }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseErrorDetail(response))
+  }
+  return (await response.json()) as IngestionResult[]
+}
+
+export async function ingestFile(
+  apiKey: string,
+  sourceId: string,
+  file: File,
+): Promise<IngestionResult> {
+  const formData = new FormData()
+  formData.append('source_id', sourceId)
+  formData.append('file', file)
+  const response = await fetch('/ingestion/files', {
+    method: 'POST',
+    headers: { 'X-API-Key': apiKey },
+    body: formData,
+  })
+  if (!response.ok) {
+    throw new Error(await parseErrorDetail(response))
+  }
+  return (await response.json()) as IngestionResult
+}
+
+export async function fetchIngestionAttempts(limit?: number): Promise<IngestionAttempt[]> {
+  const query = limit !== undefined ? `?limit=${encodeURIComponent(String(limit))}` : ''
+  const response = await fetch(`/ingestion/attempts${query}`)
+  if (!response.ok) {
+    throw new Error(await parseErrorDetail(response))
+  }
+  return (await response.json()) as IngestionAttempt[]
 }
