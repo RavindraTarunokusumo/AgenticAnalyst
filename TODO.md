@@ -130,14 +130,16 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
             (`97be67d`)
       - [x] Tests: CRUD happy/error paths; assist happy + 503; ingestion
             topic_id flip; brief topic filter forwarding (`97be67d`)
-- [ ] **T10** `api.ts` topic types + wrappers
-      - [ ] `Topic` type + CRUD wrappers (list/get/create/update/delete,
-            topic sources) + clarify/suggest-keywords wrappers
-      - [ ] Fix broken contract: `RegisterSourceRequest` gains `topic_id`
+- [x] **T10** `api.ts` topic types + wrappers (`b315088`)
+      - [x] `Topic` type + CRUD wrappers (list/get/create/update/delete,
+            topic sources) + clarify/suggest-keywords wrappers (`b315088`)
+      - [x] Fix broken contract: `RegisterSourceRequest` gains `topic_id`
             (backend has required it since T1 — source registration 422s today);
             `ingestUrls`/`ingestFile` send `topic_id` not `source_id`;
-            `fetchBriefList` optional `topic_id`
-      - [ ] `vite.config.ts` dev proxy: add `/topics` prefix
+            `fetchBriefList` optional `topic_id` (`b315088`)
+      - [x] `vite.config.ts` dev proxy: add `/topics` prefix (`b315088`)
+      - Note: frontend build intentionally red on downstream `registerSource`
+        callers until T11/T13 (contract change; api.ts/vite clean, lint passes)
 - [ ] **T11** Guided onboarding UI + editable keyword chips
 - [ ] **T12** Topic settings — edit sources (R6), re-suggest keywords (R8)
 - [ ] **T13** `App.tsx` wiring + topic selection (add dev-proxy prefixes)
