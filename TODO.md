@@ -114,18 +114,22 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
             deferred (billed call). (`a240aa4`)
       - [x] Unit tests: builders interpolate description; schemas validate;
             R7a domain-blocklist tripwire (`a240aa4`)
-- [ ] **T9** API — topics CRUD, `/topics/clarify`, `/topics/suggest-keywords`,
-      `topic_id` on ingestion routes, brief topic filter
-      - [ ] Topics CRUD routes (`POST/GET/GET{id}/PUT/DELETE /topics`,
+- [x] **T9** API — topics CRUD, `/topics/clarify`, `/topics/suggest-keywords`,
+      `topic_id` on ingestion routes, brief topic filter (`97be67d`)
+      - [x] Topics CRUD routes (`POST/GET/GET{id}/PUT/DELETE /topics`,
             `GET /topics/{id}/sources`); writes behind `_require_key`;
             404/409/422 error mapping (TopicNotFound/TopicInUse/empty keywords)
-      - [ ] `POST /topics/clarify`, `POST /topics/suggest-keywords` — stateless,
+            (`97be67d`)
+      - [x] `POST /topics/clarify`, `POST /topics/suggest-keywords` — stateless,
             gateway TOPIC_ASSIST; degrade to 503 on model failure (not crash)
-      - [ ] Ingestion routes: `IngestUrlsRequest`/file Form use `topic_id`
-            (fixes latent T5 mismatch — routes passed source_id as topic_id)
-      - [ ] `GET /briefs` optional `topic_id` filter → `list_prior_briefs`
-      - [ ] Tests: CRUD happy/error paths; assist happy + 503; ingestion
-            topic_id flip; brief topic filter forwarding
+            (`97be67d`)
+      - [x] Ingestion routes: `IngestUrlsRequest`/file Form use `topic_id`
+            (fixed latent T5 mismatch — routes passed source_id as topic_id)
+            (`97be67d`)
+      - [x] `GET /briefs` optional `topic_id` filter → `list_prior_briefs`
+            (`97be67d`)
+      - [x] Tests: CRUD happy/error paths; assist happy + 503; ingestion
+            topic_id flip; brief topic filter forwarding (`97be67d`)
 - [ ] **T10** `api.ts` topic types + wrappers
 - [ ] **T11** Guided onboarding UI + editable keyword chips
 - [ ] **T12** Topic settings — edit sources (R6), re-suggest keywords (R8)
