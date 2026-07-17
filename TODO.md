@@ -86,7 +86,16 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
       - [x] Shared test helpers; dual-topic briefs + §4.1 poll starvation
             regression (`709dfb9`) — `list_eligible_unbatched_articles` **and**
       `list_due_source_feeds` gain `topic_id` (spec §4.1); per-topic runs
-- [ ] **T7** Scheduler iterates topics (R5: cadence stays the only trigger)
+- [x] **T7** Scheduler iterates topics (R5: cadence stays the only trigger)
+      (`7758fac`)
+      - [x] `register_schedules` job bodies open a session, `list_topics`, and
+            call `pipeline.run(date.today(), topic_id=topic.id)` per topic
+            (`session_factory` threaded from `run_scheduler`) (`7758fac`)
+      - [x] Per-topic error isolation: one topic's run raising must not starve
+            the rest of the cadence (§4.1 starvation at the scheduling layer) —
+            wrap each run, log, continue (`7758fac`)
+      - [x] Tests: multi-topic iteration; one-topic-fails-others-still-run
+            (`7758fac`)
 - [ ] **T8** `ModelTask.TOPIC_ASSIST` + `topics/prompts.py`
       (R7a: no hard-coded domain vocabulary)
 - [ ] **T9** API — topics CRUD, `/topics/clarify`, `/topics/suggest-keywords`,
