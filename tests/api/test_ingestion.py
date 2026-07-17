@@ -198,6 +198,36 @@ def test_get_ingestion_attempts_returns_recent_attempts(monkeypatch) -> None:  #
     assert list_attempts.await_args.kwargs == {"status": None, "limit": 50}
 
 
+def test_get_ingestion_attempts_serializes_source_less_attempt(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A direct paste/upload add (spec §3.2) records an attempt with
+    # source_id=None; the response model must tolerate that or the whole
+    # /ingestion/attempts listing 500s once any such attempt exists.
+    started = datetime(2026, 7, 14, 10, 0, tzinfo=UTC)
+    attempt = IngestionAttempt(
+        topic_id=DEFAULT_TOPIC_ID,
+        id=_ATTEMPT_ID,
+        source_id=None,
+        requested_url="https://example.com/pasted",
+        canonical_url="https://example.com/pasted",
+        status=IngestionStatus.SUCCEEDED,
+        article_id=_ARTICLE_ID,
+        started_at=started,
+        completed_at=started,
+    )
+    monkeypatch.setattr(
+        "analyst_engine.api.app.list_ingestion_attempts",
+        AsyncMock(return_value=[attempt]),
+    )
+
+    client = make_client(monkeypatch)
+    response = client.get("/ingestion/attempts")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["source_id"] is None
+
+
 def test_get_ingestion_attempts_filters_by_status(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     list_attempts = AsyncMock(return_value=[])
     monkeypatch.setattr("analyst_engine.api.app.list_ingestion_attempts", list_attempts)

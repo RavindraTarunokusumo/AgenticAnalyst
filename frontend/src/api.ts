@@ -109,7 +109,7 @@ export interface IngestionResult {
 
 export interface IngestionAttempt {
   id: string
-  source_id: string
+  source_id: string | null
   source_feed_id: string | null
   requested_url: string
   canonical_url: string | null

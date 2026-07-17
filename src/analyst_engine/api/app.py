@@ -181,7 +181,7 @@ class IngestionResultResponse(BaseModel):
 
 class IngestionAttemptResponse(BaseModel):
     id: UUID
-    source_id: UUID
+    source_id: UUID | None
     source_feed_id: UUID | None
     requested_url: str
     canonical_url: str | None
