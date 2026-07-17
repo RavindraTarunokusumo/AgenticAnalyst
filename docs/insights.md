@@ -11,6 +11,34 @@ Record reusable lessons from completed sessions.
 - Workflow improvement:
 - Skill worth adding or updating:
 
+## 2026-07-17 — Topic-First Analyst, Slice 1 (codex/topic-first-analyst, PR #9)
+
+- What worked:
+  - Sequential Grok handoffs (T7→T8→T9→T10→T11→T12→T13) in one worktree, each with an independent full-gate before commit, kept per-task attribution clean and caught real defects the implementers' scoped self-reports missed. The advisor's call to run the two "parallel candidate" tasks (T7/T8) sequentially anyway — so the full-suite gate can attribute a red result to one task and the per-task git note stays honest — was correct; the plan labelling them "parallel" is about dependency, not a mandate to run them concurrently in a shared tree.
+  - Driving the *real* endpoints against a live Postgres (started uvicorn against the running dev-server container, applied `alembic upgrade head`, curled the exact requests `api.ts` issues) verified the frontend↔backend contract that no static gate covers. It directly confirmed the two contract fixes (source registration with `topic_id`, ingestion `topic_id` body) and the 422/409/404 mappings. This is the step that turns "frontend builds green" into "frontend works."
+  - The advisor overturning a deferral cost assumption paid off: I was about to defer the narrative-isolation review finding as "needs a schema migration," but the narrative is reachable per-topic through an existing FK (`ORMBrief.topic_id`), so the fix was a repo-only param+WHERE. Verifying the *actual* cost of a "too expensive, defer" call before deferring flipped it to a cheap in-PR fix.
+
+- What failed:
+  - **The local gate did not mirror CI: it ran `ruff check` (linter) but not `ruff format --check` (formatter), which CI's `quality` job runs.** Three Grok-authored files were lint-clean but not format-clean, so CI failed `quality` after the PR was already up, costing a fix+push+re-run cycle. `ruff check` passing says nothing about `ruff format`.
+  - The frontend gate (`oxlint` + `tsc`/`vite build`) is structurally weaker than the backend gate: `fetch` bodies are untyped JSON, so a wrong/missing field name compiles green and only fails at runtime with a 422. The already-broken `RegisterSourceRequest` (missing the `topic_id` the backend has required since T1) compiled fine and would only 422 live. Field-by-field review against the Pydantic models + the live-endpoint drive are what actually catch this class.
+  - Grok implementers emit non-idiomatic formatting (`datetime.timezone.utc` instead of the project's `datetime.UTC`; line wrapping that `ruff format` collapses). Reviewer normalization has to include `ruff format`, not just `ruff check`.
+  - `AskUserQuestion` was rejected again (as in the 2026-07-15 weekly/monthly session); the user answered the same decision directly in chat. This is now a repeated pattern for this user — lead with a concise chat question for scope decisions rather than the structured multi-question tool.
+
+- Useful commands:
+  - `uv run ruff format --check src tests` — the formatter gate CI runs; MUST be in the local gate alongside `ruff check`, `mypy`, and `pytest`.
+  - Live contract drive: `DATABASE_URL=... ALLOW_UNAUTHENTICATED_WRITE=true uv run uvicorn analyst_engine.api.app:create_app --factory --port <p>` against the running dev Postgres, then `curl` the exact frontend requests; `docker exec -e PGPASSWORD=... <pg-container> psql ...` to clean up test rows (no local `psql` client).
+  - `for i in $(seq 1 12); do gh pr checks <n> | grep -q pending || break; sleep 20; done` — poll CI to settle before merging.
+
+- Scripts created: none (Grok prompts written to the scratchpad; everything else direct tool edits + one-liners).
+
+- Workflow improvement:
+  - Codify the **full** local gate as exactly `ruff format --check` + `ruff check` + `mypy src tests` + `pytest` (+ frontend `oxlint` + `npm run build`) so it mirrors CI's `quality`/`frontend` jobs. Rule 10 says "full suite + typecheck + lint" — "lint" must be read as *both* ruff subcommands, or CI finds the format miss after the PR is up.
+  - For any frontend↔backend contract change, add an explicit "drive the real endpoints" step (live server + the exact client requests) to the frontend validation — the build/typecheck cannot see JSON field-name drift.
+  - Before deferring a review finding as "too expensive / needs a migration," spend the two minutes to verify the cost against the actual code; reachability through an existing column can turn a migration-shaped task into a one-line scope.
+
+- Skill worth adding or updating:
+  - The Grok Build Implementation/Review Handoff (CLAUDE.md) should tell the implementer to run `ruff format` (not just `ruff check`) as part of its self-check, and the reviewer-normalization step should apply `ruff format` on the returned diff.
+
 ## 2026-07-15 — Parallel Slices: Eval-Harness Parity + UI Brief Viewer + Archive Retrieval (PR #5, #6, #7)
 
 - What worked:
