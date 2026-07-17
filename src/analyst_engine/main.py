@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 
 import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from analyst_engine.config import ProcessMode, Settings
 from analyst_engine.domain.models import Cadence
@@ -47,6 +48,7 @@ async def run_scheduler(
             DailyBriefPipeline,
             PeriodicBriefPipeline,
             PeriodicBriefPipeline,
+            async_sessionmaker[AsyncSession],
             Settings,
         ],
         Awaitable[None],
@@ -77,7 +79,14 @@ async def run_scheduler(
             runtime, runner=runner, cadence=Cadence.MONTHLY
         )
         scheduler = scheduler_factory()
-        await schedule_registrar(scheduler, pipeline, weekly_pipeline, monthly_pipeline, settings)
+        await schedule_registrar(
+            scheduler,
+            pipeline,
+            weekly_pipeline,
+            monthly_pipeline,
+            runtime.session_factory,
+            settings,
+        )
         scheduler.start()
         started = True
         await wait_forever()

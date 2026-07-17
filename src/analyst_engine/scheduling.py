@@ -5,14 +5,20 @@ Only the scheduler process mode registers jobs.
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from analyst_engine.config import ProcessMode, Settings
+from analyst_engine.persistence.engine import session_scope
+from analyst_engine.persistence.repositories import list_topics
 from analyst_engine.pipeline.daily_brief import DailyBriefPipeline
 from analyst_engine.pipeline.periodic_brief import PeriodicBriefPipeline
+
+logger = logging.getLogger(__name__)
 
 
 async def register_schedules(
@@ -20,6 +26,7 @@ async def register_schedules(
     pipeline: DailyBriefPipeline,
     weekly_pipeline: PeriodicBriefPipeline,
     monthly_pipeline: PeriodicBriefPipeline,
+    session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
 ) -> None:
     """Register daily, weekly, monthly jobs (idempotent by key)."""
@@ -27,9 +34,15 @@ async def register_schedules(
         return
 
     async def _run_daily_pipeline() -> None:
-        # T7: iterate topics and call run(..., topic_id=...). Signature
-        # requires topic_id (T6); scheduler iteration is owned by T7.
-        await pipeline.run(date.today())  # type: ignore[call-arg]
+        async with session_scope(session_factory) as session:
+            topics = await list_topics(session)
+        for topic in topics:
+            try:
+                await pipeline.run(date.today(), topic_id=topic.id)
+            except Exception:
+                logger.exception(
+                    "daily pipeline failed for topic_id=%s", topic.id
+                )
 
     async def _run_weekly_pipeline() -> None:
         # CronTrigger fires on local time; passing local date.today() (rather
@@ -37,12 +50,26 @@ async def register_schedules(
         # clock) keeps the job's window normalization aligned with the local
         # instant the job actually fired at, avoiding a wrong-day window near
         # midnight in timezones offset enough from UTC.
-        # T7: iterate topics and pass topic_id.
-        await weekly_pipeline.run(date.today())  # type: ignore[call-arg]
+        async with session_scope(session_factory) as session:
+            topics = await list_topics(session)
+        for topic in topics:
+            try:
+                await weekly_pipeline.run(date.today(), topic_id=topic.id)
+            except Exception:
+                logger.exception(
+                    "weekly pipeline failed for topic_id=%s", topic.id
+                )
 
     async def _run_monthly_pipeline() -> None:
-        # T7: iterate topics and pass topic_id.
-        await monthly_pipeline.run(date.today())  # type: ignore[call-arg]
+        async with session_scope(session_factory) as session:
+            topics = await list_topics(session)
+        for topic in topics:
+            try:
+                await monthly_pipeline.run(date.today(), topic_id=topic.id)
+            except Exception:
+                logger.exception(
+                    "monthly pipeline failed for topic_id=%s", topic.id
+                )
 
     # Daily at 02:00 local
     scheduler.add_job(
