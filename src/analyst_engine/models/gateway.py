@@ -16,6 +16,7 @@ class ModelTask(StrEnum):
     """Responsibilities that map to specific models."""
 
     BATCH_SUMMARY = "batch_summary"  # qwen3.5-flash
+    TOPIC_ASSIST = "topic_assist"  # qwen3.5-flash (clarify + keyword suggest)
     FRONTIER_DAILY = "frontier_daily"  # qwen3.7-max
     FRONTIER_WEEKLY = "frontier_weekly"
     FRONTIER_MONTHLY = "frontier_monthly"
