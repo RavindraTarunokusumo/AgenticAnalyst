@@ -156,6 +156,14 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
             `updateTopic` — R8 (`d1adc7f`)
       - [x] Additive only (App wires it in T13) (`d1adc7f`)
 - [ ] **T13** `App.tsx` wiring + topic selection (add dev-proxy prefixes)
+      - [ ] App gates on topics (not sources): 0 topics → `TopicOnboarding`;
+            topic selector; briefs filtered by selected topic
+      - [ ] Wire `TopicSettings` for the selected topic; delete old
+            `Onboarding.tsx`
+      - [ ] Refactor `AddContentPanel`: `source`→`topicId` prop; links+file
+            article-pool adds via `ingestUrls`/`ingestFile(topicId)`; feed/source
+            add now lives in `TopicSettings`
+      - [ ] Build green end-to-end; drive the flow against a running backend
 - [ ] **T14** Docs — architecture, database, changelog
 
 ## Future Backlog
