@@ -141,6 +141,13 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
       - Note: frontend build intentionally red on downstream `registerSource`
         callers until T11/T13 (contract change; api.ts/vite clean, lint passes)
 - [ ] **T11** Guided onboarding UI + editable keyword chips
+      - [ ] `KeywordChips.tsx` — controlled editable chip list (add/remove)
+      - [ ] `TopicOnboarding.tsx` — guided flow (spec §5): interest →
+            clarify (keyless) → keywords chips → sources → create topic + register
+            sources (keyed). Builds `interest_detail` from the Q&A for R8.
+      - [ ] Degrade: clarify/suggest 503 must not block; user can proceed and
+            enter keywords manually; create blocked only if keywords empty
+      - [ ] Additive only (App swap + old Onboarding delete are T13)
 - [ ] **T12** Topic settings — edit sources (R6), re-suggest keywords (R8)
 - [ ] **T13** `App.tsx` wiring + topic selection (add dev-proxy prefixes)
 - [ ] **T14** Docs — architecture, database, changelog
