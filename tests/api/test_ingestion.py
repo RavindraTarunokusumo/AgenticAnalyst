@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 from conftest import make_client
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
 
 from analyst_engine.domain.models import ExtractorKind, IngestionAttempt, IngestionStatus
 from analyst_engine.ingestion.models import IngestionResult
@@ -45,7 +46,7 @@ def test_post_ingestion_urls_requires_auth_and_maps_results(monkeypatch) -> None
 
     unauthenticated = client.post(
         "/ingestion/urls",
-        json={"source_id": str(_SOURCE_ID), "urls": ["https://example.com/story"]},
+        json={"topic_id": str(DEFAULT_TOPIC_ID), "urls": ["https://example.com/story"]},
     )
     assert unauthenticated.status_code == 401
     assert unauthenticated.json() == {"detail": "API key required"}
@@ -55,7 +56,7 @@ def test_post_ingestion_urls_requires_auth_and_maps_results(monkeypatch) -> None
         "/ingestion/urls",
         headers={"X-API-Key": "test-secret"},
         json={
-            "source_id": str(_SOURCE_ID),
+            "topic_id": str(DEFAULT_TOPIC_ID),
             "urls": ["https://example.com/story", "https://example.com/broken"],
         },
     )
@@ -78,7 +79,7 @@ def test_post_ingestion_urls_requires_auth_and_maps_results(monkeypatch) -> None
         "error_summary": "timeout",
     }
     ingestion_service.ingest_urls.assert_awaited_once_with(
-        _SOURCE_ID,
+        DEFAULT_TOPIC_ID,
         ["https://example.com/story", "https://example.com/broken"],
     )
 
@@ -103,7 +104,7 @@ def test_post_ingestion_files_requires_auth_and_maps_result(monkeypatch) -> None
 
     unauthenticated = client.post(
         "/ingestion/files",
-        data={"source_id": str(_SOURCE_ID)},
+        data={"topic_id": str(DEFAULT_TOPIC_ID)},
         files={"file": ("report.pdf", b"pdf bytes", "application/pdf")},
     )
     assert unauthenticated.status_code == 401
@@ -112,7 +113,7 @@ def test_post_ingestion_files_requires_auth_and_maps_result(monkeypatch) -> None
     authenticated = client.post(
         "/ingestion/files",
         headers={"X-API-Key": "test-secret"},
-        data={"source_id": str(_SOURCE_ID)},
+        data={"topic_id": str(DEFAULT_TOPIC_ID)},
         files={"file": ("report.pdf", b"pdf bytes", "application/pdf")},
     )
 
@@ -125,7 +126,7 @@ def test_post_ingestion_files_requires_auth_and_maps_result(monkeypatch) -> None
         "error_summary": None,
     }
     ingestion_service.ingest_file.assert_awaited_once_with(
-        _SOURCE_ID, "report.pdf", b"pdf bytes", "application/pdf"
+        DEFAULT_TOPIC_ID, "report.pdf", b"pdf bytes", "application/pdf"
     )
 
 
@@ -152,7 +153,7 @@ def test_post_ingestion_files_maps_oversized_upload_failure_from_service(monkeyp
 
     response = client.post(
         "/ingestion/files",
-        data={"source_id": str(_SOURCE_ID)},
+        data={"topic_id": str(DEFAULT_TOPIC_ID)},
         files={"file": ("report.pdf", b"way more than four bytes", "application/pdf")},
     )
 
@@ -161,13 +162,14 @@ def test_post_ingestion_files_maps_oversized_upload_failure_from_service(monkeyp
     assert body["status"] == "failed"
     assert body["error_code"] == "file_too_large"
     ingestion_service.ingest_file.assert_awaited_once_with(
-        _SOURCE_ID, "report.pdf", b"way more than four bytes", "application/pdf"
+        DEFAULT_TOPIC_ID, "report.pdf", b"way more than four bytes", "application/pdf"
     )
 
 
 def test_get_ingestion_attempts_returns_recent_attempts(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     started = datetime(2026, 7, 14, 10, 0, tzinfo=UTC)
     attempt = IngestionAttempt(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_ATTEMPT_ID,
         source_id=_SOURCE_ID,
         requested_url="https://example.com/story",
@@ -194,6 +196,36 @@ def test_get_ingestion_attempts_returns_recent_attempts(monkeypatch) -> None:  #
     list_attempts.assert_awaited_once()
     assert list_attempts.await_args is not None
     assert list_attempts.await_args.kwargs == {"status": None, "limit": 50}
+
+
+def test_get_ingestion_attempts_serializes_source_less_attempt(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A direct paste/upload add (spec §3.2) records an attempt with
+    # source_id=None; the response model must tolerate that or the whole
+    # /ingestion/attempts listing 500s once any such attempt exists.
+    started = datetime(2026, 7, 14, 10, 0, tzinfo=UTC)
+    attempt = IngestionAttempt(
+        topic_id=DEFAULT_TOPIC_ID,
+        id=_ATTEMPT_ID,
+        source_id=None,
+        requested_url="https://example.com/pasted",
+        canonical_url="https://example.com/pasted",
+        status=IngestionStatus.SUCCEEDED,
+        article_id=_ARTICLE_ID,
+        started_at=started,
+        completed_at=started,
+    )
+    monkeypatch.setattr(
+        "analyst_engine.api.app.list_ingestion_attempts",
+        AsyncMock(return_value=[attempt]),
+    )
+
+    client = make_client(monkeypatch)
+    response = client.get("/ingestion/attempts")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["source_id"] is None
 
 
 def test_get_ingestion_attempts_filters_by_status(monkeypatch) -> None:  # type: ignore[no-untyped-def]

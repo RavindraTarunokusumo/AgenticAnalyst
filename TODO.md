@@ -6,6 +6,187 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
+### Session: Topic-First Analyst — Slice 1 (`codex/topic-first-analyst`)
+
+Spec: `docs/superpowers/specs/2026-07-16-topic-first-analyst-design.md` (`8e3c6da`, `cdf60ff`)
+Plan: `docs/superpowers/plans/2026-07-16-topic-first-analyst.md` (`73aa05b`)
+
+Topic becomes the top-level unit: sources are scoped to a topic, fetching is
+keyword-filtered before any model call, and briefs are per-topic. Auto Search
+(SearXNG) is Slice 2; analysis style is Slice 3.
+
+- [x] **T1** Domain models — `Topic`; `topic_id` on Source/Article/Brief/
+      IngestionAttempt; `Article.source_id` nullable; reject empty `keywords[]`
+- [x] **T1b** Handle source-less articles in `src/` — *added mid-session
+      (Rule 2); the plan's breaking-change table listed only
+      `daily_brief.py:135` and missed three more call sites, found by the
+      post-T1 full gate.* `summarizer._build_article_source_lookup` **raises**
+      on a null `source_id`, so a pasted link or upload (source-less by design,
+      spec §3.2) would crash the brief pipeline — the R4 feature breaking the
+      moment it is used. Also `daily_brief.py:136`, `api/app.py:581,603`.
+      Fallback attribution: `USER_PROVIDED_SOURCE_NAME` ("User-provided").
+      Source-id sites are mypy-clean; remaining `mypy src` errors are
+      missing `topic_id` in later-task call sites (T2–T6 ownership).
+- [x] **T2** Persistence + Alembic migration + Default-topic backfill
+      (needs keywords sentinel — empty is rejected by T1). ORM `Topic`
+      table; `topic_id` FK on source/article/brief/ingestion_attempt;
+      `article.source_id` nullable. Revision `00f3ae192a5a` revises
+      `6b135f7a55de`: create topic → insert Default with keywords
+      `["__default__"]` → backfill → NOT NULL. Executed against real
+      Postgres (upgrade/downgrade + seeded backfill).
+- [x] **T3** Topic repository (CRUD + `list_sources_for_topic`) (`859ef11`)
+      - [x] `create_topic` / `get_topic` / `list_topics` / `update_topic` /
+            `delete_topic` / `list_sources_for_topic` in repositories.py
+      - [x] Postgres-backed repository tests (round-trip, list order, update
+            keywords, delete with sources attached, list_sources_for_topic)
+- [x] **T4** Keyword matcher (`topics/matcher.py`) + `ArticleCandidate.summary`
+      populated by `parse_feed` (spec §3.4.1 — sets the recall ceiling)
+      (`8b3e10d`, `2d5fca9`)
+      - [x] `topics/matcher.py` pure `matches()` — case-insensitive, word-boundary,
+            any-match; `re.escape` on untrusted keywords (`8b3e10d`)
+      - [x] `ArticleCandidate.summary` + `parse_feed` from entry summary/description
+            (`2d5fca9`)
+      - [x] Unit tests: matcher boundaries/metacharacters; feed summary RSS/Atom/absent
+- [x] **T5** Ingestion filtering — matcher injected; filter at both asymmetric
+      points; rejected candidates still recorded as observable attempts
+      (`cfc7114`, `ec266aa`, `9b4482c`)
+      - [x] Inject `is_relevant` predicate into `IngestionService`; wire
+            `matches` in `runtime.build_ingestion_service` (spec §3.3 seam)
+            (`ec266aa`)
+      - [x] `poll_feed` resolves source→topic→keywords; stage-1 filter on
+            title+summary before fetch; stage-2 on cleaned_content before
+            persist; rejections record `not_relevant` attempts (spec §3.4/§6)
+            (`ec266aa`)
+      - [x] `ingest_urls`/`ingest_file` take `topic_id`, set article
+            `source_id=None`, no relevance filter (spec §3.2; R4/R5)
+            (`cfc7114`, `ec266aa`)
+      - [x] Unit tests: stage-1 no-fetch, stage-2 drop, attempt recorded,
+            on-topic pass, direct-add topic_id + unfiltered (`9b4482c`)
+- [x] **T5b** Make `ingestion_attempt.source_id` nullable (`2f319b2`) — *added
+      mid-session (Rule 2).* T5 made the domain `IngestionAttempt.source_id`
+      optional for source-less adds, but the ORM column and T2's migration left
+      it `NOT NULL`. Proven against a real Postgres: inserting a source-less
+      attempt fails with a not-null violation, so `ingest_urls`/`ingest_file`
+      (R4 — pasted links and uploads) would crash on any real database.
+      Invisible to T5's unit tests, which fake persistence. Grok flagged the
+      mismatch in its own T5 note but left it unfixed. Fold into revision
+      `00f3ae192a5a` (unpushed, and already the "source-less records"
+      migration) rather than adding a 4th revision that immediately corrects
+      the 3rd. ORM `nullable=True`; migration upgrade/downgrade mirror
+      `article.source_id`; Postgres-backed repository round-trip test added.
+- [x] **T6** Pipeline scoping — `list_eligible_unbatched_articles` **and**
+      `list_due_source_feeds` gain `topic_id` (spec §4.1); per-topic runs
+      (`d29d35b`, `ecf3e17`, `b69076a`, `709dfb9`)
+      - [x] Repo: topic_id on list_due_source_feeds (join source) +
+            list_eligible_unbatched_articles; brief mappers; unique index
+            per topic (`d29d35b`)
+      - [x] Pipelines + runner/graphs stamp Brief.topic_id; idempotency
+            keys include topic_id (`ecf3e17`)
+      - [x] API pipeline/trigger routes pass topic_id (`b69076a`)
+      - [x] Shared test helpers; dual-topic briefs + §4.1 poll starvation
+            regression (`709dfb9`) — `list_eligible_unbatched_articles` **and**
+      `list_due_source_feeds` gain `topic_id` (spec §4.1); per-topic runs
+- [x] **T7** Scheduler iterates topics (R5: cadence stays the only trigger)
+      (`7758fac`)
+      - [x] `register_schedules` job bodies open a session, `list_topics`, and
+            call `pipeline.run(date.today(), topic_id=topic.id)` per topic
+            (`session_factory` threaded from `run_scheduler`) (`7758fac`)
+      - [x] Per-topic error isolation: one topic's run raising must not starve
+            the rest of the cadence (§4.1 starvation at the scheduling layer) —
+            wrap each run, log, continue (`7758fac`)
+      - [x] Tests: multi-topic iteration; one-topic-fails-others-still-run
+            (`7758fac`)
+- [x] **T8** `ModelTask.TOPIC_ASSIST` + `topics/prompts.py`
+      (R7a: no hard-coded domain vocabulary) (`a240aa4`)
+      - [x] `ModelTask.TOPIC_ASSIST` in gateway; map in **both** dashscope and
+            openrouter task maps (openrouter `_model_map[task]` KeyErrors if
+            unmapped — it is a chat task, so map, don't raise like EMBED)
+            (`a240aa4`)
+      - [x] config: `topic_assist_model`, `topic_assist_prompt_version`
+            (`a240aa4`)
+      - [x] `topics/prompts.py`: `build_clarify_messages`,
+            `build_keyword_suggestion_messages` + output pydantic schemas,
+            mirroring `summarization/prompts.py` conventions (`a240aa4`)
+      - [x] R7a: prompt strings derive questions from the user's description,
+            zero hard-coded domain vocabulary; senior read literal strings +
+            structural 3-domain check (system prompt byte-identical across
+            war/software/sports). Behavioral live-model 3-subject check
+            deferred (billed call). (`a240aa4`)
+      - [x] Unit tests: builders interpolate description; schemas validate;
+            R7a domain-blocklist tripwire (`a240aa4`)
+- [x] **T9** API — topics CRUD, `/topics/clarify`, `/topics/suggest-keywords`,
+      `topic_id` on ingestion routes, brief topic filter (`97be67d`)
+      - [x] Topics CRUD routes (`POST/GET/GET{id}/PUT/DELETE /topics`,
+            `GET /topics/{id}/sources`); writes behind `_require_key`;
+            404/409/422 error mapping (TopicNotFound/TopicInUse/empty keywords)
+            (`97be67d`)
+      - [x] `POST /topics/clarify`, `POST /topics/suggest-keywords` — stateless,
+            gateway TOPIC_ASSIST; degrade to 503 on model failure (not crash)
+            (`97be67d`)
+      - [x] Ingestion routes: `IngestUrlsRequest`/file Form use `topic_id`
+            (fixed latent T5 mismatch — routes passed source_id as topic_id)
+            (`97be67d`)
+      - [x] `GET /briefs` optional `topic_id` filter → `list_prior_briefs`
+            (`97be67d`)
+      - [x] Tests: CRUD happy/error paths; assist happy + 503; ingestion
+            topic_id flip; brief topic filter forwarding (`97be67d`)
+- [x] **T10** `api.ts` topic types + wrappers (`b315088`)
+      - [x] `Topic` type + CRUD wrappers (list/get/create/update/delete,
+            topic sources) + clarify/suggest-keywords wrappers (`b315088`)
+      - [x] Fix broken contract: `RegisterSourceRequest` gains `topic_id`
+            (backend has required it since T1 — source registration 422s today);
+            `ingestUrls`/`ingestFile` send `topic_id` not `source_id`;
+            `fetchBriefList` optional `topic_id` (`b315088`)
+      - [x] `vite.config.ts` dev proxy: add `/topics` prefix (`b315088`)
+      - Note: frontend build intentionally red on downstream `registerSource`
+        callers until T11/T13 (contract change; api.ts/vite clean, lint passes)
+- [x] **T11** Guided onboarding UI + editable keyword chips (`2588694`)
+      - [x] `KeywordChips.tsx` — controlled editable chip list (add/remove) (`2588694`)
+      - [x] `TopicOnboarding.tsx` — guided flow (spec §5): interest →
+            clarify (keyless) → keywords chips → sources → create topic + register
+            sources (keyed). Builds `interest_detail` from the Q&A for R8. (`2588694`)
+      - [x] Degrade: clarify/suggest 503 must not block; user can proceed and
+            enter keywords manually; create blocked only if keywords empty (`2588694`)
+      - [x] Additive only (App swap + old Onboarding delete are T13) (`2588694`)
+- [x] **T12** Topic settings — edit sources (R6), re-suggest keywords (R8) (`d1adc7f`)
+      - [x] `TopicSettings.tsx`: list topic sources (`fetchTopicSources`), add a
+            source+feed under the topic (`registerSource` w/ topic_id) — R6 (`d1adc7f`)
+      - [x] Re-suggest keywords against retained `interest_detail`
+            (`suggestKeywords`) → editable `KeywordChips` → save via
+            `updateTopic` — R8 (`d1adc7f`)
+      - [x] Additive only (App wires it in T13) (`d1adc7f`)
+- [x] **T13** `App.tsx` wiring + topic selection (`ca7532c`)
+      - [x] App gates on topics (not sources): 0 topics → `TopicOnboarding`;
+            topic selector; briefs filtered by selected topic (`ca7532c`)
+      - [x] Wire `TopicSettings` for the selected topic; delete old
+            `Onboarding.tsx` (`ca7532c`)
+      - [x] Refactor `AddContentPanel`: `source`→`topicId` prop; links+file
+            article-pool adds via `ingestUrls`/`ingestFile(topicId)`; feed/source
+            add now lives in `TopicSettings` (`ca7532c`)
+      - [x] Build green end-to-end; drove real endpoints (topic CRUD, source
+            w/ topic_id, ingest, brief filter, 422/409/404) against live
+            Postgres — contract verified (`ca7532c`)
+- [x] **T14** Docs — architecture, database, changelog
+
+#### Code review fixes (PR #9, Grok bundled review — Rule 2)
+
+- [x] **R1** (`e4122f3`) `IngestionAttemptResponse.source_id` / TS `IngestionAttempt.source_id`
+      made nullable — a source-less direct add (spec §3.2) otherwise 500s the
+      whole `GET /ingestion/attempts` listing on response validation. Route-level
+      regression test added (T5b only covered the repository round-trip).
+- [x] **R2** (`0a88822`) Narrative load topic-scoping — `get_narrative_version_as_of` was
+      global while prior briefs are topic-scoped (T6), so a topic inherited
+      whichever topic last briefed. No migration: the narrative is reachable
+      per-topic through `ORMBrief.topic_id` (already present); add a `topic_id`
+      param + WHERE and thread it through `runner.load_context`. Same bug class
+      as the T6 poll-starvation fix.
+- Deferred to a follow-up slice (reported to user): composite-uniqueness so two
+  topics can share a source/URL — `(topic_id, stable_id)` on source,
+  `(topic_id, url_fingerprint)` on article, `(topic_id, feed_url_fingerprint)`
+  on source_feed. Needs a migration; safe to defer for a distinct-sources-per-
+  topic demo. (Also deferred: delete blocked by `not_relevant` attempts — a
+  deliberate ON DELETE RESTRICT UX nit.) (`f36e539`)
+
 ## Future Backlog
 
 Candidate next slices, roughly in suggested priority order. None have a spec

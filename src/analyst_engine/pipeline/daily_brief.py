@@ -43,6 +43,7 @@ from analyst_engine.workflows.runner import WorkflowRunner
 @dataclass(frozen=True)
 class DailyPipelineResult:
     target_date: date
+    topic_id: UUID
     feeds_polled: int
     articles_succeeded: int
     articles_duplicate: int
@@ -76,9 +77,11 @@ class DailyBriefPipeline:
         self._settings = settings
         self._clock = clock
 
-    async def run(self, target_date: date) -> DailyPipelineResult:
+    async def run(self, target_date: date, *, topic_id: UUID) -> DailyPipelineResult:
+        # Poll only this topic's due feeds (spec §4.1). A global poll would
+        # consume every feed's last_polled_at during the first topic's run.
         async with session_scope(self._session_factory) as session:
-            due_feeds = await list_due_source_feeds(session, self._clock())
+            due_feeds = await list_due_source_feeds(session, self._clock(), topic_id=topic_id)
         due_feeds = due_feeds[: self._settings.max_feeds_per_run]
 
         articles_succeeded = articles_duplicate = articles_failed = 0
@@ -94,7 +97,10 @@ class DailyBriefPipeline:
 
         async with session_scope(self._session_factory) as session:
             eligible_articles = await list_eligible_unbatched_articles(
-                session, target_date, self._settings.allowed_languages
+                session,
+                target_date,
+                self._settings.allowed_languages,
+                topic_id=topic_id,
             )
         eligible_articles = eligible_articles[: self._settings.max_articles_per_run]
 
@@ -132,7 +138,10 @@ class DailyBriefPipeline:
             else:
                 async with session_scope(self._session_factory) as session:
                     batch_articles_rows = await get_articles_by_ids(session, batch.article_ids)
-                    source_ids = list({a.source_id for a in batch_articles_rows})
+                    # source_id may be None for direct-add articles (spec §3.2).
+                    source_ids = list(
+                        {a.source_id for a in batch_articles_rows if a.source_id is not None}
+                    )
                     sources = await get_sources_by_ids(session, source_ids)
                 try:
                     summary, _usage = await summarize_batch(
@@ -142,7 +151,7 @@ class DailyBriefPipeline:
                         gateway=self._gateway,
                         model=self._settings.batch_summary_model,
                         prompt_version=self._settings.batch_summary_prompt_version,
-                        correlation_id=f"daily:{target_date.isoformat()}:{batch.id}",
+                        correlation_id=f"daily:{topic_id}:{target_date.isoformat()}:{batch.id}",
                     )
                 except SummaryValidationError:
                     continue
@@ -175,7 +184,7 @@ class DailyBriefPipeline:
             selected_summaries.append(batch_summary)
 
         if not selected_summaries:
-            # An already-terminal run for this exact date means this is a
+            # An already-terminal run for this exact topic+date means this is a
             # retry after a prior success (or failure), not genuinely a
             # no-content day - list_eligible_unbatched_articles naturally
             # returns nothing once articles are already batched, so Steps
@@ -184,7 +193,7 @@ class DailyBriefPipeline:
             # own idempotency-key lookup return the existing terminal run
             # (spec 9: "Pipeline retry reuses ... terminal workflow runs").
             date_key = target_date.isoformat()
-            idempotency_key = f"{Cadence.DAILY.value}:{date_key}:{date_key}"
+            idempotency_key = f"{Cadence.DAILY.value}:{topic_id}:{date_key}:{date_key}"
             async with session_scope(self._session_factory) as session:
                 existing_run = await get_workflow_run_by_idempotency(session, idempotency_key)
             if existing_run is None or existing_run.status not in (
@@ -193,6 +202,7 @@ class DailyBriefPipeline:
             ):
                 return DailyPipelineResult(
                     target_date=target_date,
+                    topic_id=topic_id,
                     feeds_polled=len(due_feeds),
                     articles_succeeded=articles_succeeded,
                     articles_duplicate=articles_duplicate,
@@ -209,19 +219,24 @@ class DailyBriefPipeline:
                 )
 
         workflow_run: WorkflowRun = await self._runner.run_daily(
-            target_date, batch_summaries=selected_summaries
+            target_date, topic_id=topic_id, batch_summaries=selected_summaries
         )
 
         brief_id: UUID | None = None
         if workflow_run.status is WorkflowStatus.SUCCEEDED:
             async with session_scope(self._session_factory) as session:
                 brief = await get_brief_by_cadence_interval(
-                    session, Cadence.DAILY, target_date, target_date
+                    session,
+                    Cadence.DAILY,
+                    target_date,
+                    target_date,
+                    topic_id=topic_id,
                 )
                 brief_id = brief.id if brief is not None else None
 
         return DailyPipelineResult(
             target_date=target_date,
+            topic_id=topic_id,
             feeds_polled=len(due_feeds),
             articles_succeeded=articles_succeeded,
             articles_duplicate=articles_duplicate,

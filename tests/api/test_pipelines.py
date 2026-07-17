@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 from conftest import make_client
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
 
 from analyst_engine.domain.models import Cadence, WorkflowStatus
 from analyst_engine.pipeline.daily_brief import DailyPipelineResult
@@ -33,6 +34,7 @@ def _pipeline_result(*, is_no_content: bool) -> DailyPipelineResult:
         workflow_run_id=None if is_no_content else _WORKFLOW_RUN_ID,
         workflow_status=None if is_no_content else WorkflowStatus.SUCCEEDED,
         brief_id=None if is_no_content else _BRIEF_ID,
+        topic_id=DEFAULT_TOPIC_ID,
     )
 
 
@@ -46,7 +48,7 @@ def test_post_pipelines_daily_requires_auth_and_maps_result(monkeypatch) -> None
 
     unauthenticated = client.post(
         "/pipelines/daily",
-        json={"target_date": "2026-07-13"},
+        json={"target_date": "2026-07-13", "topic_id": str(DEFAULT_TOPIC_ID)},
     )
     assert unauthenticated.status_code == 401
     assert unauthenticated.json() == {"detail": "API key required"}
@@ -55,12 +57,13 @@ def test_post_pipelines_daily_requires_auth_and_maps_result(monkeypatch) -> None
     authenticated = client.post(
         "/pipelines/daily",
         headers={"X-API-Key": "test-secret"},
-        json={"target_date": "2026-07-13"},
+        json={"target_date": "2026-07-13", "topic_id": str(DEFAULT_TOPIC_ID)},
     )
 
     assert authenticated.status_code == 200
     body = authenticated.json()
     assert body == {
+        "topic_id": str(DEFAULT_TOPIC_ID),
         "target_date": "2026-07-13",
         "feeds_polled": 2,
         "articles_succeeded": 5,
@@ -76,7 +79,7 @@ def test_post_pipelines_daily_requires_auth_and_maps_result(monkeypatch) -> None
         "workflow_status": "succeeded",
         "brief_id": str(_BRIEF_ID),
     }
-    pipeline.run.assert_awaited_once_with(_TARGET_DATE)
+    pipeline.run.assert_awaited_once_with(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
 
 def test_post_pipelines_daily_maps_no_content_result(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -89,7 +92,7 @@ def test_post_pipelines_daily_maps_no_content_result(monkeypatch) -> None:  # ty
 
     response = client.post(
         "/pipelines/daily",
-        json={"target_date": "2026-07-13"},
+        json={"target_date": "2026-07-13", "topic_id": str(DEFAULT_TOPIC_ID)},
     )
 
     assert response.status_code == 200
@@ -112,6 +115,7 @@ def _periodic_result(*, cadence: Cadence, is_no_content: bool) -> PeriodicPipeli
         workflow_run_id=None if is_no_content else _WORKFLOW_RUN_ID,
         workflow_status=None if is_no_content else WorkflowStatus.SUCCEEDED,
         brief_id=None if is_no_content else _BRIEF_ID,
+        topic_id=DEFAULT_TOPIC_ID,
     )
 
 
@@ -127,7 +131,7 @@ def test_post_pipelines_weekly_requires_auth_and_maps_result(monkeypatch) -> Non
 
     unauthenticated = client.post(
         "/pipelines/weekly",
-        json={"target_date": "2026-07-08"},
+        json={"target_date": "2026-07-08", "topic_id": str(DEFAULT_TOPIC_ID)},
     )
     assert unauthenticated.status_code == 401
     weekly_pipeline.run.assert_not_awaited()
@@ -135,12 +139,13 @@ def test_post_pipelines_weekly_requires_auth_and_maps_result(monkeypatch) -> Non
     authenticated = client.post(
         "/pipelines/weekly",
         headers={"X-API-Key": "test-secret"},
-        json={"target_date": "2026-07-08"},
+        json={"target_date": "2026-07-08", "topic_id": str(DEFAULT_TOPIC_ID)},
     )
 
     assert authenticated.status_code == 200
     body = authenticated.json()
     assert body == {
+        "topic_id": str(DEFAULT_TOPIC_ID),
         "cadence": "weekly",
         "covered_start": "2026-07-06",
         "covered_end": "2026-07-12",
@@ -150,7 +155,7 @@ def test_post_pipelines_weekly_requires_auth_and_maps_result(monkeypatch) -> Non
         "workflow_status": "succeeded",
         "brief_id": str(_BRIEF_ID),
     }
-    weekly_pipeline.run.assert_awaited_once_with(date(2026, 7, 8))
+    weekly_pipeline.run.assert_awaited_once_with(date(2026, 7, 8), topic_id=DEFAULT_TOPIC_ID)
 
 
 def test_post_pipelines_weekly_maps_no_content_result(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -163,7 +168,9 @@ def test_post_pipelines_weekly_maps_no_content_result(monkeypatch) -> None:  # t
         weekly_pipeline=weekly_pipeline,
     )
 
-    response = client.post("/pipelines/weekly", json={"target_date": "2026-07-08"})
+    response = client.post(
+        "/pipelines/weekly", json={"target_date": "2026-07-08", "topic_id": str(DEFAULT_TOPIC_ID)}
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -185,7 +192,7 @@ def test_post_pipelines_monthly_requires_auth_and_maps_result(monkeypatch) -> No
 
     unauthenticated = client.post(
         "/pipelines/monthly",
-        json={"target_date": "2026-07-15"},
+        json={"target_date": "2026-07-15", "topic_id": str(DEFAULT_TOPIC_ID)},
     )
     assert unauthenticated.status_code == 401
     monthly_pipeline.run.assert_not_awaited()
@@ -193,12 +200,13 @@ def test_post_pipelines_monthly_requires_auth_and_maps_result(monkeypatch) -> No
     authenticated = client.post(
         "/pipelines/monthly",
         headers={"X-API-Key": "test-secret"},
-        json={"target_date": "2026-07-15"},
+        json={"target_date": "2026-07-15", "topic_id": str(DEFAULT_TOPIC_ID)},
     )
 
     assert authenticated.status_code == 200
     body = authenticated.json()
     assert body == {
+        "topic_id": str(DEFAULT_TOPIC_ID),
         "cadence": "monthly",
         "covered_start": "2026-07-01",
         "covered_end": "2026-07-31",
@@ -208,7 +216,7 @@ def test_post_pipelines_monthly_requires_auth_and_maps_result(monkeypatch) -> No
         "workflow_status": "succeeded",
         "brief_id": str(_BRIEF_ID),
     }
-    monthly_pipeline.run.assert_awaited_once_with(date(2026, 7, 15))
+    monthly_pipeline.run.assert_awaited_once_with(date(2026, 7, 15), topic_id=DEFAULT_TOPIC_ID)
 
 
 def test_post_pipelines_monthly_maps_no_content_result(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -221,7 +229,9 @@ def test_post_pipelines_monthly_maps_no_content_result(monkeypatch) -> None:  # 
         monthly_pipeline=monthly_pipeline,
     )
 
-    response = client.post("/pipelines/monthly", json={"target_date": "2026-07-15"})
+    response = client.post(
+        "/pipelines/monthly", json={"target_date": "2026-07-15", "topic_id": str(DEFAULT_TOPIC_ID)}
+    )
 
     assert response.status_code == 200
     body = response.json()

@@ -26,10 +26,13 @@ def _normalize_whitespace(text: str) -> str:
 def _build_article_source_lookup(
     articles: list[Article],
     sources: list[Source],
-) -> dict[UUID, tuple[Article, Source]]:
+) -> dict[UUID, tuple[Article, Source | None]]:
     source_by_id = {source.id: source for source in sources}
-    lookup: dict[UUID, tuple[Article, Source]] = {}
+    lookup: dict[UUID, tuple[Article, Source | None]] = {}
     for article in articles:
+        if article.source_id is None:
+            lookup[article.id] = (article, None)
+            continue
         source = source_by_id.get(article.source_id)
         if source is None:
             raise SummaryValidationError(
@@ -76,7 +79,7 @@ async def summarize_batch(
     correlation_id: str,
 ) -> tuple[BatchSummary, ModelUsage]:
     lookup = _build_article_source_lookup(articles, sources)
-    batch_articles: list[tuple[Article, Source]] = []
+    batch_articles: list[tuple[Article, Source | None]] = []
     for article_id in batch.article_ids:
         pair = lookup.get(article_id)
         if pair is None:

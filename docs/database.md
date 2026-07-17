@@ -16,9 +16,22 @@ Connection is supplied exclusively via `DATABASE_URL` (postgresql+asyncpg scheme
 
 ## Core Tables
 
-### source
-Stable registered source.
+### topic
+User-defined subject of interest; the top-level organising unit. Sources,
+articles, briefs, and ingestion attempts are all scoped to one topic.
 - `id` (UUID PK)
+- `name`, `description`
+- `interest_detail` (nullable — captured onboarding Q&A, retained so keywords
+  can be re-suggested later without re-deriving from scratch, R8)
+- `keywords` (`ARRAY(Text)`, non-empty — the matching terms used for relevance
+  filtering; an empty list is rejected at the model boundary so "empty" can
+  never mean "match everything")
+- `created_at`, `updated_at`
+
+### source
+Stable registered source, scoped to a topic.
+- `id` (UUID PK)
+- `topic_id` (FK → topic, `ON DELETE RESTRICT`, indexed)
 - `stable_id` (unique)
 - `name`, `normalized_domain`
 - `created_at`
@@ -28,12 +41,12 @@ Polled RSS/Atom feed belonging to a source.
 - `id`, `source_id` (FK), `feed_url`, `feed_url_fingerprint` (unique), `enabled`, `poll_interval_minutes`, `etag`, `last_modified`, `last_polled_at`, `last_success_at`, `last_error_summary`, created/updated_at
 
 ### ingestion_attempt
-Observable record of one feed or manual ingestion attempt (attempts, not the immutable article, absorb failures/duplicates).
-- `id`, `source_id` (FK), `source_feed_id` (nullable FK), `requested_url`, `canonical_url`, `url_fingerprint`, `status` (pending/fetched/duplicate/succeeded/failed), `http_status`, `extractor`, `article_id`, `error_code`, `error_summary`, started/completed_at
+Observable record of one feed or manual ingestion attempt (attempts, not the immutable article, absorb failures/duplicates). A candidate rejected by the topic relevance filter still records an attempt (`error_code="not_relevant"`) so drops are observable, not silent.
+- `id`, `topic_id` (FK → topic, `ON DELETE RESTRICT`, indexed), `source_id` (**nullable** FK — null for direct pasted-link/upload adds, spec §3.2), `source_feed_id` (nullable FK), `requested_url`, `canonical_url`, `url_fingerprint`, `status` (pending/fetched/duplicate/succeeded/failed), `http_status`, `extractor`, `article_id`, `error_code`, `error_summary`, started/completed_at
 
 ### article
 Immutable captured content with provenance.
-- `id` (UUID PK), `source_id` (FK), `url`, `url_fingerprint` (unique), title, author, published/ingested, language, hashes, `cleaned_content`
+- `id` (UUID PK), `topic_id` (FK → topic, `ON DELETE RESTRICT`, indexed), `source_id` (**nullable** FK — null for direct pasted-link/upload adds, which carry a topic but no source, spec §3.2), `url`, `url_fingerprint` (unique), title, author, published/ingested, language, hashes, `cleaned_content`
 - Indexes on source and published_at.
 
 ### article_batch
@@ -46,8 +59,9 @@ Flash model output over one batch (with citations).
 - Unique constraint on `(batch_id, model, prompt_version)` - a batch's summary for a given model+prompt version is created at most once.
 
 ### brief
-Cadence synthesis (daily/weekly/monthly).
-- `id`, `cadence`, covered interval (unique per cadence+start+end), content, cited batch/article arrays, narrative_state_version_id, created_by_run_id, created_at
+Cadence synthesis (daily/weekly/monthly), scoped to a topic.
+- `id`, `topic_id` (FK → topic, `ON DELETE RESTRICT`, indexed), `cadence`, covered interval, content, cited batch/article arrays, narrative_state_version_id, created_by_run_id, created_at
+- Unique index is **per topic**: `(topic_id, cadence, covered_start, covered_end)` (was `(cadence, covered_start, covered_end)`). The old topic-less unique index would have forbidden two topics briefing the same date — the topic-scoping change is what makes independent per-topic briefs possible (spec §4.1).
 
 ### narrative_state_version
 Versioned analytical memory.
@@ -71,7 +85,7 @@ Idempotent scheduled execution record.
 ## Migration Rules
 
 - Alembic is the sole mechanism.
-- Initial migration (`963e5ab691b1`) is manual and includes both app tables and checkpoint tables. `6b135f7a55de` adds `source_feed`/`ingestion_attempt` and the `article_batch`/`batch_summary` constraints above.
+- Initial migration (`963e5ab691b1`) is manual and includes both app tables and checkpoint tables. `6b135f7a55de` adds `source_feed`/`ingestion_attempt` and the `article_batch`/`batch_summary` constraints above. `00f3ae192a5a` adds the `topic` table and `topic_id` FKs (on source/article/brief/ingestion_attempt), makes `article.source_id` and `ingestion_attempt.source_id` nullable, and replaces the brief cadence-interval unique index with the topic-scoped one. Its upgrade seeds a `Default` topic (keywords sentinel `["__default__"]`, since an empty list is rejected) and backfills existing rows so `topic_id` lands non-null; run against a real Postgres (upgrade/downgrade + seeded backfill).
 - Migrations are exercised from blank PostgreSQL+pgvector container in integration tests (upgrade/base/upgrade roundtrip).
 - Downgrades are provided where feasible.
 - Never edit a committed migration; add a new revision.

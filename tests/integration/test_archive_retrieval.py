@@ -33,11 +33,18 @@ from analyst_engine.workflows.graphs import build_daily_graph
 
 try:
     from fixtures import (  # type: ignore[import-not-found]
+        DEFAULT_TOPIC_ID,
         docker_endpoint_available,
+        ensure_topic,
         truncate_domain_tables,
     )
 except ImportError:  # pragma: no cover
-    from tests.fixtures import docker_endpoint_available, truncate_domain_tables
+    from tests.fixtures import (
+        DEFAULT_TOPIC_ID,
+        docker_endpoint_available,
+        ensure_topic,
+        truncate_domain_tables,
+    )
 
 try:
     from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
@@ -148,6 +155,7 @@ def _blended_vector(axis_a: int, axis_b: int) -> list[float]:
 
 def _make_brief(cadence: Cadence, covered: date, content: str) -> Brief:
     return Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         cadence=cadence,
         covered_start=covered,
         covered_end=covered,
@@ -171,6 +179,7 @@ async def test_search_orders_by_cosine_distance_nearest_first(
     far_brief = _make_brief(Cadence.DAILY, date(2026, 7, 12), "farthest match")
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await save_brief(sess, close_brief)
         await save_brief(sess, medium_brief)
         await save_brief(sess, far_brief)
@@ -217,6 +226,7 @@ async def test_search_filters_by_cadence(
     weekly_brief = _make_brief(Cadence.WEEKLY, date(2026, 7, 6), "weekly")
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await save_brief(sess, daily_brief)
         await save_brief(sess, weekly_brief)
         await save_embedding(
@@ -254,6 +264,7 @@ async def test_search_respects_limit_and_returns_empty_for_no_embeddings(
 
     briefs = [_make_brief(Cadence.DAILY, date(2026, 7, 1 + i), f"brief {i}") for i in range(3)]
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         for brief in briefs:
             await save_brief(sess, brief)
             await save_embedding(
@@ -307,19 +318,23 @@ async def test_synthesize_node_persists_brief_despite_db_level_embedding_failure
         citations=[Citation(article_id=uuid.uuid4(), excerpt="quoted evidence")],
     )
     state = {
+        "topic_id": str(DEFAULT_TOPIC_ID),
         "cadence": Cadence.DAILY.value,
         "covered_start": "2026-07-10",
         "covered_end": "2026-07-10",
         "batch_summaries": [summary.model_dump(mode="python")],
         "correlation_id": str(run_id),
     }
+    async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
+
     graph = build_daily_graph(_BadDimensionEmbedGateway(), migrated).compile()
 
     await graph.ainvoke(state)
 
     async with session_scope(migrated) as sess:
         persisted = await get_brief_by_cadence_interval(
-            sess, Cadence.DAILY, date(2026, 7, 10), date(2026, 7, 10)
+            sess, Cadence.DAILY, date(2026, 7, 10), date(2026, 7, 10), topic_id=DEFAULT_TOPIC_ID
         )
         embeddings = await search_embeddings_by_similarity(
             sess, _unit_vector(0), cadence=None, limit=10

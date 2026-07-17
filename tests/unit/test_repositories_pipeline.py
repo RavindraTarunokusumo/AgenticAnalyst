@@ -9,7 +9,11 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from alembic.config import Config
-from fixtures import truncate_domain_tables  # type: ignore[import-not-found]
+from fixtures import (  # type: ignore[import-not-found]
+    DEFAULT_TOPIC_ID,
+    ensure_topic,
+    truncate_domain_tables,
+)
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from alembic import command
@@ -150,6 +154,7 @@ async def test_get_articles_by_ids_returns_matching_rows_in_any_order(
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="pipeline-src-articles",
         name="Pipeline Source",
         normalized_domain="example.com",
@@ -157,6 +162,7 @@ async def test_get_articles_by_ids_returns_matching_rows_in_any_order(
     now = datetime(2026, 7, 13, 12, 0, tzinfo=UTC)
     articles = [
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url=f"https://example.com/a{i}",
             url_fingerprint=f"fp-a{i}",
@@ -168,6 +174,7 @@ async def test_get_articles_by_ids_returns_matching_rows_in_any_order(
     ]
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         for article in articles:
             await save_article(sess, article)
@@ -190,6 +197,7 @@ async def test_get_sources_by_ids_returns_matching_rows_in_any_order(
 ) -> None:
     sources = [
         Source(
+            topic_id=DEFAULT_TOPIC_ID,
             stable_id=f"pipeline-src-{index}",
             name=f"Source {index}",
             normalized_domain=f"example{index}.com",
@@ -198,6 +206,7 @@ async def test_get_sources_by_ids_returns_matching_rows_in_any_order(
     ]
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         for source in sources:
             await upsert_source(sess, source)
         found = await get_sources_by_ids(sess, [sources[1].id, sources[0].id])
@@ -218,6 +227,7 @@ async def test_is_batch_summary_cited_tracks_daily_citations_only(
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="pipeline-src-cited",
         name="Cited Source",
         normalized_domain="example.com",
@@ -225,6 +235,7 @@ async def test_is_batch_summary_cited_tracks_daily_citations_only(
     now = datetime(2026, 7, 13, 12, 0, tzinfo=UTC)
     articles = [
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url=f"https://example.com/c{i}",
             url_fingerprint=f"fp-c{i}",
@@ -248,6 +259,7 @@ async def test_is_batch_summary_cited_tracks_daily_citations_only(
         citations=[Citation(article_id=articles[0].id, excerpt="Body 1.")],
     )
     daily_brief = Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         cadence=Cadence.DAILY,
         covered_start=date(2026, 7, 12),
         covered_end=date(2026, 7, 12),
@@ -257,6 +269,7 @@ async def test_is_batch_summary_cited_tracks_daily_citations_only(
         created_by_run_id=articles[0].id,
     )
     weekly_brief = Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         cadence=Cadence.WEEKLY,
         covered_start=date(2026, 7, 7),
         covered_end=date(2026, 7, 13),
@@ -267,6 +280,7 @@ async def test_is_batch_summary_cited_tracks_daily_citations_only(
     )
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         for article in articles:
             await save_article(sess, article)
@@ -310,6 +324,7 @@ async def test_list_eligible_batch_summaries_for_window_respects_exact_boundary(
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="pipeline-src-window",
         name="Window Source",
         normalized_domain="example.com",
@@ -325,6 +340,7 @@ async def test_list_eligible_batch_summaries_for_window_respects_exact_boundary(
         # the batch's articles fall on, not batch composition.
         articles = [
             Article(
+                topic_id=DEFAULT_TOPIC_ID,
                 source_id=source.id,
                 url=f"https://example.com/{key}-{index}",
                 url_fingerprint=f"fp-{key}-{index}",
@@ -362,6 +378,7 @@ async def test_list_eligible_batch_summaries_for_window_respects_exact_boundary(
     )
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         for batch, summary, articles in (
             in_lower_boundary,
@@ -374,7 +391,9 @@ async def test_list_eligible_batch_summaries_for_window_respects_exact_boundary(
             await save_article_batch(sess, batch)
             await save_batch_summary(sess, summary)
 
-        eligible = await list_eligible_batch_summaries_for_window(sess, window_start, window_end)
+        eligible = await list_eligible_batch_summaries_for_window(
+            sess, window_start, window_end, topic_id=DEFAULT_TOPIC_ID
+        )
 
     eligible_ids = {summary.id for summary in eligible}
     assert eligible_ids == {in_lower_boundary[1].id, in_upper_boundary[1].id}
@@ -385,6 +404,7 @@ async def test_list_eligible_batch_summaries_for_window_includes_batch_with_mixe
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="pipeline-src-window-mixed",
         name="Window Mixed Source",
         normalized_domain="example.com",
@@ -392,6 +412,7 @@ async def test_list_eligible_batch_summaries_for_window_includes_batch_with_mixe
     window_start = date(2026, 7, 6)
     window_end = date(2026, 7, 12)
     in_window_article = Article(
+        topic_id=DEFAULT_TOPIC_ID,
         source_id=source.id,
         url="https://example.com/mixed-in",
         url_fingerprint="fp-mixed-in",
@@ -400,6 +421,7 @@ async def test_list_eligible_batch_summaries_for_window_includes_batch_with_mixe
         cleaned_content="In window body.",
     )
     out_of_window_article = Article(
+        topic_id=DEFAULT_TOPIC_ID,
         source_id=source.id,
         url="https://example.com/mixed-out",
         url_fingerprint="fp-mixed-out",
@@ -408,6 +430,7 @@ async def test_list_eligible_batch_summaries_for_window_includes_batch_with_mixe
         cleaned_content="Out of window body.",
     )
     second_out_of_window_article = Article(
+        topic_id=DEFAULT_TOPIC_ID,
         source_id=source.id,
         url="https://example.com/mixed-out-2",
         url_fingerprint="fp-mixed-out-2",
@@ -434,6 +457,7 @@ async def test_list_eligible_batch_summaries_for_window_includes_batch_with_mixe
     )
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         await save_article(sess, in_window_article)
         await save_article(sess, out_of_window_article)
@@ -441,7 +465,9 @@ async def test_list_eligible_batch_summaries_for_window_includes_batch_with_mixe
         await save_article_batch(sess, batch)
         await save_batch_summary(sess, summary)
 
-        eligible = await list_eligible_batch_summaries_for_window(sess, window_start, window_end)
+        eligible = await list_eligible_batch_summaries_for_window(
+            sess, window_start, window_end, topic_id=DEFAULT_TOPIC_ID
+        )
 
     assert {s.id for s in eligible} == {summary.id}
 
@@ -451,11 +477,13 @@ async def test_list_eligible_batch_summaries_for_window_empty_window_returns_not
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="pipeline-src-window-empty",
         name="Window Empty Source",
         normalized_domain="example.com",
     )
     article = Article(
+        topic_id=DEFAULT_TOPIC_ID,
         source_id=source.id,
         url="https://example.com/no-summary",
         url_fingerprint="fp-no-summary",
@@ -465,11 +493,12 @@ async def test_list_eligible_batch_summaries_for_window_empty_window_returns_not
     )
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         await save_article(sess, article)
 
         eligible = await list_eligible_batch_summaries_for_window(
-            sess, date(2026, 7, 6), date(2026, 7, 12)
+            sess, date(2026, 7, 6), date(2026, 7, 12), topic_id=DEFAULT_TOPIC_ID
         )
 
     assert eligible == []

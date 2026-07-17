@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
 import pytest
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
 
 from analyst_engine.domain.models import (
     BatchSummary,
@@ -55,7 +56,11 @@ class _PipelineHarness:
             yield object()
 
         async def fake_list_eligible(
-            _session: object, window_start: date, window_end: date
+            _session: object,
+            window_start: date,
+            window_end: date,
+            *,
+            topic_id: object | None = None,
         ) -> list[BatchSummary]:
             self.window_calls.append((window_start, window_end))
             return list(self.candidates)
@@ -82,7 +87,12 @@ class _PipelineHarness:
             return self.existing_workflow_run_by_key.get(idempotency_key)
 
         async def fake_get_brief(
-            _session: object, cadence: Cadence, start: date, end: date
+            _session: object,
+            cadence: Cadence,
+            start: date,
+            end: date,
+            *,
+            topic_id: object | None = None,
         ) -> Brief | None:
             if self.brief_by_interval is None:
                 return None
@@ -144,7 +154,7 @@ async def test_weekly_window_normalizes_mid_week_anchor_to_monday_sunday(
     workflow_run = WorkflowRun(
         id=_RUN_ID,
         cadence=Cadence.WEEKLY,
-        idempotency_key="weekly:2026-07-13:2026-07-19",
+        idempotency_key=f"weekly:{DEFAULT_TOPIC_ID}:2026-07-13:2026-07-19",
         status=WorkflowStatus.SUCCEEDED,
     )
     runner = _FakeRunner(workflow_run)
@@ -153,7 +163,7 @@ async def test_weekly_window_normalizes_mid_week_anchor_to_monday_sunday(
     )
     harness.candidates = [_summary()]
 
-    result = await pipeline.run()
+    result = await pipeline.run(topic_id=DEFAULT_TOPIC_ID)
 
     # 2026-07-16 is a Thursday; the containing week is Mon 2026-07-13 - Sun 2026-07-19.
     assert result.covered_start == date(2026, 7, 13)
@@ -173,7 +183,7 @@ async def test_monthly_window_normalizes_mid_month_anchor(
     workflow_run = WorkflowRun(
         id=_RUN_ID,
         cadence=Cadence.MONTHLY,
-        idempotency_key="monthly:2026-07-01:2026-07-31",
+        idempotency_key=f"monthly:{DEFAULT_TOPIC_ID}:2026-07-01:2026-07-31",
         status=WorkflowStatus.SUCCEEDED,
     )
     runner = _FakeRunner(workflow_run)
@@ -182,7 +192,7 @@ async def test_monthly_window_normalizes_mid_month_anchor(
     )
     harness.candidates = [_summary()]
 
-    result = await pipeline.run()
+    result = await pipeline.run(topic_id=DEFAULT_TOPIC_ID)
 
     assert result.covered_start == date(2026, 7, 1)
     assert result.covered_end == date(2026, 7, 31)
@@ -199,7 +209,7 @@ async def test_monthly_window_handles_december_year_rollover(
     workflow_run = WorkflowRun(
         id=_RUN_ID,
         cadence=Cadence.MONTHLY,
-        idempotency_key="monthly:2026-12-01:2026-12-31",
+        idempotency_key=f"monthly:{DEFAULT_TOPIC_ID}:2026-12-01:2026-12-31",
         status=WorkflowStatus.SUCCEEDED,
     )
     runner = _FakeRunner(workflow_run)
@@ -208,7 +218,7 @@ async def test_monthly_window_handles_december_year_rollover(
     )
     harness.candidates = [_summary()]
 
-    result = await pipeline.run()
+    result = await pipeline.run(topic_id=DEFAULT_TOPIC_ID)
 
     assert result.covered_start == date(2026, 12, 1)
     assert result.covered_end == date(2026, 12, 31)
@@ -222,7 +232,7 @@ async def test_no_content_short_circuits_without_calling_runner(
     runner = _FakeRunner(
         WorkflowRun(
             cadence=Cadence.WEEKLY,
-            idempotency_key="weekly:2026-07-13:2026-07-19",
+            idempotency_key=f"weekly:{DEFAULT_TOPIC_ID}:2026-07-13:2026-07-19",
             status=WorkflowStatus.SUCCEEDED,
         )
     )
@@ -231,7 +241,7 @@ async def test_no_content_short_circuits_without_calling_runner(
     )
     harness.candidates = []
 
-    result = await pipeline.run()
+    result = await pipeline.run(topic_id=DEFAULT_TOPIC_ID)
 
     assert result.is_no_content is True
     assert result.summaries_selected == 0
@@ -244,7 +254,7 @@ async def test_terminal_prior_run_retry_still_calls_runner_with_no_new_candidate
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     harness = _PipelineHarness(monkeypatch)
-    idempotency_key = "weekly:2026-07-13:2026-07-19"
+    idempotency_key = f"weekly:{DEFAULT_TOPIC_ID}:2026-07-13:2026-07-19"
     existing_run = WorkflowRun(
         id=_RUN_ID,
         cadence=Cadence.WEEKLY,
@@ -253,6 +263,7 @@ async def test_terminal_prior_run_retry_still_calls_runner_with_no_new_candidate
     )
     harness.existing_workflow_run_by_key[idempotency_key] = existing_run
     harness.brief_by_interval = Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_BRIEF_ID,
         cadence=Cadence.WEEKLY,
         covered_start=date(2026, 7, 13),
@@ -268,7 +279,7 @@ async def test_terminal_prior_run_retry_still_calls_runner_with_no_new_candidate
     )
     harness.candidates = []
 
-    result = await pipeline.run()
+    result = await pipeline.run(topic_id=DEFAULT_TOPIC_ID)
 
     assert result.is_no_content is False
     assert result.workflow_run_id == _RUN_ID
@@ -291,7 +302,7 @@ async def test_already_cited_for_this_cadence_is_excluded(
     runner = _FakeRunner(
         WorkflowRun(
             cadence=Cadence.WEEKLY,
-            idempotency_key="weekly:2026-07-13:2026-07-19",
+            idempotency_key=f"weekly:{DEFAULT_TOPIC_ID}:2026-07-13:2026-07-19",
             status=WorkflowStatus.SUCCEEDED,
         )
     )
@@ -299,7 +310,7 @@ async def test_already_cited_for_this_cadence_is_excluded(
         runner, cadence=Cadence.WEEKLY, clock=datetime(2026, 7, 16, 12, 0, tzinfo=UTC)
     )
 
-    result = await pipeline.run()
+    result = await pipeline.run(topic_id=DEFAULT_TOPIC_ID)
 
     assert result.is_no_content is True
     assert result.summaries_selected == 0
@@ -324,7 +335,7 @@ async def test_cited_for_different_cadence_is_not_excluded(
     workflow_run = WorkflowRun(
         id=_RUN_ID,
         cadence=Cadence.WEEKLY,
-        idempotency_key="weekly:2026-07-13:2026-07-19",
+        idempotency_key=f"weekly:{DEFAULT_TOPIC_ID}:2026-07-13:2026-07-19",
         status=WorkflowStatus.SUCCEEDED,
     )
     runner = _FakeRunner(workflow_run)
@@ -332,6 +343,7 @@ async def test_cited_for_different_cadence_is_not_excluded(
         runner, cadence=Cadence.WEEKLY, clock=datetime(2026, 7, 16, 12, 0, tzinfo=UTC)
     )
     harness.brief_by_interval = Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_BRIEF_ID,
         cadence=Cadence.WEEKLY,
         covered_start=date(2026, 7, 13),
@@ -342,7 +354,7 @@ async def test_cited_for_different_cadence_is_not_excluded(
         created_by_run_id=_RUN_ID,
     )
 
-    result = await pipeline.run()
+    result = await pipeline.run(topic_id=DEFAULT_TOPIC_ID)
 
     assert result.is_no_content is False
     assert result.summaries_selected == 1

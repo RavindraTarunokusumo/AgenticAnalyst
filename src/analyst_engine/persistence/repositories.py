@@ -29,6 +29,7 @@ from analyst_engine.domain.models import (
     PredictionExpectation,
     Source,
     SourceFeed,
+    Topic,
     WorkflowRun,
     WorkflowStatus,
 )
@@ -63,6 +64,9 @@ from analyst_engine.persistence.models import (
     SourceFeed as ORMSourceFeed,
 )
 from analyst_engine.persistence.models import (
+    Topic as ORMTopic,
+)
+from analyst_engine.persistence.models import (
     WorkflowRun as ORMWorkflowRun,
 )
 
@@ -72,6 +76,7 @@ from analyst_engine.persistence.models import (
 def _article_to_orm(a: Article) -> ORMArticle:
     return ORMArticle(
         id=a.id,
+        topic_id=a.topic_id,
         source_id=a.source_id,
         url=a.url,
         url_fingerprint=a.url_fingerprint,
@@ -88,6 +93,7 @@ def _article_to_orm(a: Article) -> ORMArticle:
 def _article_to_domain(row: ORMArticle) -> Article:
     return Article(
         id=row.id,
+        topic_id=row.topic_id,
         source_id=row.source_id,
         url=row.url,
         url_fingerprint=row.url_fingerprint,
@@ -101,9 +107,22 @@ def _article_to_domain(row: ORMArticle) -> Article:
     )
 
 
+def _topic_to_domain(row: ORMTopic) -> Topic:
+    return Topic(
+        id=row.id,
+        name=row.name,
+        description=row.description,
+        interest_detail=row.interest_detail,
+        keywords=list(row.keywords),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
 def _source_to_domain(row: ORMSource) -> Source:
     return Source(
         id=row.id,
+        topic_id=row.topic_id,
         stable_id=row.stable_id,
         name=row.name,
         normalized_domain=row.normalized_domain,
@@ -150,6 +169,7 @@ def _source_feed_to_domain(row: ORMSourceFeed) -> SourceFeed:
 def _ingestion_attempt_to_orm(attempt: IngestionAttempt) -> ORMIngestionAttempt:
     return ORMIngestionAttempt(
         id=attempt.id,
+        topic_id=attempt.topic_id,
         source_id=attempt.source_id,
         source_feed_id=attempt.source_feed_id,
         requested_url=attempt.requested_url,
@@ -169,6 +189,7 @@ def _ingestion_attempt_to_orm(attempt: IngestionAttempt) -> ORMIngestionAttempt:
 def _ingestion_attempt_to_domain(row: ORMIngestionAttempt) -> IngestionAttempt:
     return IngestionAttempt(
         id=row.id,
+        topic_id=row.topic_id,
         source_id=row.source_id,
         source_feed_id=row.source_feed_id,
         requested_url=row.requested_url,
@@ -219,6 +240,7 @@ def _summary_to_domain(row: ORMBatchSummary) -> BatchSummary:
 def _brief_to_domain(row: ORMBrief) -> Brief:
     return Brief(
         id=row.id,
+        topic_id=row.topic_id,
         cadence=Cadence(row.cadence),
         covered_start=row.covered_start,
         covered_end=row.covered_end,
@@ -275,6 +297,7 @@ def _summary_to_orm(s: BatchSummary) -> ORMBatchSummary:
 def _brief_to_orm(b: Brief) -> ORMBrief:
     return ORMBrief(
         id=b.id,
+        topic_id=b.topic_id,
         cadence=b.cadence.value,
         covered_start=b.covered_start,
         covered_end=b.covered_end,
@@ -372,6 +395,14 @@ class IngestionAttemptNotFoundError(RuntimeError):
     """Raised when an update targets no ingestion attempt."""
 
 
+class TopicNotFoundError(RuntimeError):
+    """Raised when a topic lookup/update/delete targets no row."""
+
+
+class TopicInUseError(RuntimeError):
+    """Raised when delete_topic is blocked by RESTRICT dependents (sources, etc.)."""
+
+
 _WORKFLOW_TRANSITIONS: dict[WorkflowStatus, frozenset[WorkflowStatus]] = {
     WorkflowStatus.PENDING: frozenset({WorkflowStatus.RUNNING, WorkflowStatus.FAILED}),
     WorkflowStatus.RUNNING: frozenset({WorkflowStatus.SUCCEEDED, WorkflowStatus.FAILED}),
@@ -384,6 +415,117 @@ _WORKFLOW_TRANSITIONS: dict[WorkflowStatus, frozenset[WorkflowStatus]] = {
 # --- Repositories / operations ---
 
 
+async def create_topic(session: AsyncSession, topic: Topic) -> Topic:
+    row = ORMTopic(
+        id=topic.id,
+        name=topic.name,
+        description=topic.description,
+        interest_detail=topic.interest_detail,
+        keywords=list(topic.keywords),
+        created_at=topic.created_at,
+        updated_at=topic.updated_at,
+    )
+    session.add(row)
+    await session.flush()
+    await session.refresh(row)
+    return _topic_to_domain(row)
+
+
+async def get_topic(session: AsyncSession, topic_id: uuid.UUID) -> Topic | None:
+    row = (
+        await session.execute(select(ORMTopic).where(ORMTopic.id == topic_id))
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    return _topic_to_domain(row)
+
+
+async def list_topics(session: AsyncSession) -> list[Topic]:
+    rows = (
+        (await session.execute(select(ORMTopic).order_by(ORMTopic.name.asc(), ORMTopic.id.asc())))
+        .scalars()
+        .all()
+    )
+    return [_topic_to_domain(row) for row in rows]
+
+
+async def update_topic(session: AsyncSession, topic: Topic) -> Topic:
+    """Persist editable topic configuration (R6); always bumps updated_at."""
+
+    row = (
+        await session.execute(select(ORMTopic).where(ORMTopic.id == topic.id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise TopicNotFoundError(f"topic not found: id={topic.id}")
+    # Domain Topic rejects empty keywords; re-check so the repository never
+    # writes a list that would silently match nothing (spec §6).
+    if not topic.keywords:
+        raise ValueError("keywords must not be empty")
+    for keyword in topic.keywords:
+        if not keyword or not keyword.strip():
+            raise ValueError("keywords entries must not be empty or whitespace-only")
+
+    row.name = topic.name
+    row.description = topic.description
+    row.interest_detail = topic.interest_detail
+    row.keywords = list(topic.keywords)
+    row.updated_at = datetime.now(UTC)
+    await session.flush()
+    await session.refresh(row)
+    return _topic_to_domain(row)
+
+
+async def delete_topic(session: AsyncSession, topic_id: uuid.UUID) -> None:
+    """Delete a topic. Does not cascade: ON DELETE RESTRICT dependents fail loudly.
+
+    Pre-checks dependents rather than relying on IntegrityError so the caller's
+    session stays usable (session_scope would otherwise hit PendingRollbackError
+    after a flushed FK violation).
+    """
+
+    row = (
+        await session.execute(select(ORMTopic).where(ORMTopic.id == topic_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise TopicNotFoundError(f"topic not found: id={topic_id}")
+
+    # Tables with topic_id FK ON DELETE RESTRICT (T2 migration).
+    has_dependents = (
+        await session.execute(
+            select(
+                or_(
+                    exists().where(ORMSource.topic_id == topic_id),
+                    exists().where(ORMArticle.topic_id == topic_id),
+                    exists().where(ORMBrief.topic_id == topic_id),
+                    exists().where(ORMIngestionAttempt.topic_id == topic_id),
+                )
+            )
+        )
+    ).scalar_one()
+    if has_dependents:
+        raise TopicInUseError(
+            f"topic still referenced by sources or other dependents: id={topic_id}"
+        )
+
+    await session.delete(row)
+    await session.flush()
+
+
+async def list_sources_for_topic(session: AsyncSession, topic_id: uuid.UUID) -> list[Source]:
+    rows = (
+        (
+            await session.execute(
+                select(ORMSource)
+                .where(ORMSource.topic_id == topic_id)
+                .order_by(ORMSource.stable_id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_source_to_domain(row) for row in rows]
+
+
 async def upsert_source(session: AsyncSession, source: Source) -> Source:
     orm = (
         await session.execute(select(ORMSource).where(ORMSource.stable_id == source.stable_id))
@@ -391,6 +533,7 @@ async def upsert_source(session: AsyncSession, source: Source) -> Source:
     if orm is None:
         orm = ORMSource(
             id=source.id,
+            topic_id=source.topic_id,
             stable_id=source.stable_id,
             name=source.name,
             normalized_domain=source.normalized_domain,
@@ -549,14 +692,22 @@ async def claim_pending_workflow_run(session: AsyncSession, run: WorkflowRun) ->
 
 
 async def get_narrative_version_as_of(
-    session: AsyncSession, before: date
+    session: AsyncSession, before: date, *, topic_id: uuid.UUID
 ) -> NarrativeStateVersion | None:
-    """Load the narrative attached to the latest brief strictly before a run."""
+    """Load the narrative attached to the latest brief for a topic before a run.
+
+    Scoped to the topic (via ``ORMBrief.topic_id``); an unscoped load would let
+    a topic inherit whichever topic briefed most recently, the same
+    cross-topic leak the T6 poll-scoping fix closed for article selection. The
+    narrative is reachable per-topic through the brief that references it, so no
+    ``topic_id`` column on ``narrative_state_version`` is needed.
+    """
 
     narrative_id = (
         await session.execute(
             select(ORMBrief.narrative_state_version_id)
             .where(
+                ORMBrief.topic_id == topic_id,
                 ORMBrief.covered_end < before,
                 ORMBrief.narrative_state_version_id.is_not(None),
             )
@@ -581,34 +732,26 @@ async def get_narrative_version_as_of(
     )
 
 
-async def list_prior_briefs(session: AsyncSession, cadence: Cadence, before: date) -> list[Brief]:
+async def list_prior_briefs(
+    session: AsyncSession,
+    cadence: Cadence,
+    before: date,
+    *,
+    topic_id: uuid.UUID | None = None,
+) -> list[Brief]:
+    conditions = [ORMBrief.cadence == cadence.value, ORMBrief.covered_end < before]
+    if topic_id is not None:
+        conditions.append(ORMBrief.topic_id == topic_id)
     rows = (
         (
             await session.execute(
-                select(ORMBrief)
-                .where(ORMBrief.cadence == cadence.value, ORMBrief.covered_end < before)
-                .order_by(ORMBrief.covered_end.desc())
-                .limit(31)
+                select(ORMBrief).where(*conditions).order_by(ORMBrief.covered_end.desc()).limit(31)
             )
         )
         .scalars()
         .all()
     )
-    return [
-        Brief(
-            id=row.id,
-            cadence=Cadence(row.cadence),
-            covered_start=row.covered_start,
-            covered_end=row.covered_end,
-            content=row.content,
-            cited_batch_summary_ids=list(row.cited_batch_summary_ids),
-            cited_article_ids=list(row.cited_article_ids),
-            narrative_state_version_id=row.narrative_state_version_id,
-            created_by_run_id=row.created_by_run_id,
-            created_at=row.created_at,
-        )
-        for row in rows
-    ]
+    return [_brief_to_domain(row) for row in rows]
 
 
 async def save_workflow_run(session: AsyncSession, run: WorkflowRun) -> WorkflowRun:
@@ -631,11 +774,17 @@ async def get_workflow_run_by_idempotency(
 
 
 async def get_brief_by_cadence_interval(
-    session: AsyncSession, cadence: Cadence, start: date, end: date
+    session: AsyncSession,
+    cadence: Cadence,
+    start: date,
+    end: date,
+    *,
+    topic_id: uuid.UUID,
 ) -> Brief | None:
     row = (
         await session.execute(
             select(ORMBrief).where(
+                ORMBrief.topic_id == topic_id,
                 ORMBrief.cadence == cadence.value,
                 ORMBrief.covered_start == start,
                 ORMBrief.covered_end == end,
@@ -644,18 +793,7 @@ async def get_brief_by_cadence_interval(
     ).scalar_one_or_none()
     if row is None:
         return None
-    return Brief(
-        id=row.id,
-        cadence=cadence,
-        covered_start=row.covered_start,
-        covered_end=row.covered_end,
-        content=row.content,
-        cited_batch_summary_ids=list(row.cited_batch_summary_ids or []),
-        cited_article_ids=list(row.cited_article_ids or []),
-        narrative_state_version_id=row.narrative_state_version_id,
-        created_by_run_id=row.created_by_run_id,
-        created_at=row.created_at,
-    )
+    return _brief_to_domain(row)
 
 
 async def list_batch_summaries_for_brief(
@@ -732,7 +870,15 @@ async def get_source_feed_by_fingerprint(
     return _source_feed_to_domain(row)
 
 
-async def list_due_source_feeds(session: AsyncSession, now: datetime) -> list[SourceFeed]:
+async def list_due_source_feeds(
+    session: AsyncSession, now: datetime, *, topic_id: uuid.UUID
+) -> list[SourceFeed]:
+    """Return due feeds whose source belongs to ``topic_id`` (spec §4.1).
+
+    Topic-scoping is mandatory: a global poll would update every feed's
+    ``last_polled_at`` during the first topic's run, so later topics in the
+    same cycle would find their feeds not-due and ingest nothing.
+    """
     poll_due_at = ORMSourceFeed.last_polled_at + (
         ORMSourceFeed.poll_interval_minutes * literal_column("INTERVAL '1 minute'")
     )
@@ -740,7 +886,9 @@ async def list_due_source_feeds(session: AsyncSession, now: datetime) -> list[So
         (
             await session.execute(
                 select(ORMSourceFeed)
+                .join(ORMSource, ORMSource.id == ORMSourceFeed.source_id)
                 .where(
+                    ORMSource.topic_id == topic_id,
                     ORMSourceFeed.enabled.is_(True),
                     or_(ORMSourceFeed.last_polled_at.is_(None), poll_due_at <= now),
                 )
@@ -858,7 +1006,11 @@ async def get_article_by_fingerprint(session: AsyncSession, fingerprint: str) ->
 
 
 async def list_eligible_unbatched_articles(
-    session: AsyncSession, before_date: date, languages: list[str]
+    session: AsyncSession,
+    before_date: date,
+    languages: list[str],
+    *,
+    topic_id: uuid.UUID,
 ) -> list[Article]:
     if not languages:
         return []
@@ -873,6 +1025,7 @@ async def list_eligible_unbatched_articles(
             await session.execute(
                 select(ORMArticle)
                 .where(
+                    ORMArticle.topic_id == topic_id,
                     ORMArticle.published_at < published_before,
                     ORMArticle.language.in_(languages),
                     ~batched,
@@ -891,9 +1044,13 @@ async def list_eligible_unbatched_articles(
 
 
 async def list_eligible_batch_summaries_for_window(
-    session: AsyncSession, window_start: date, window_end: date
+    session: AsyncSession,
+    window_start: date,
+    window_end: date,
+    *,
+    topic_id: uuid.UUID,
 ) -> list[BatchSummary]:
-    """Batch summaries whose batch has >=1 article published within [window_start, window_end]."""
+    """Batch summaries whose batch has >=1 article for topic in [window_start, window_end]."""
 
     window_start_dt = datetime.combine(window_start, time.min, tzinfo=UTC)
     window_end_dt = datetime.combine(window_end + timedelta(days=1), time.min, tzinfo=UTC)
@@ -903,6 +1060,7 @@ async def list_eligible_batch_summaries_for_window(
         .where(
             ORMArticleBatch.id == ORMBatchSummary.batch_id,
             ORMArticle.id == any_(ORMArticleBatch.article_ids),
+            ORMArticle.topic_id == topic_id,
             ORMArticle.published_at >= window_start_dt,
             ORMArticle.published_at < window_end_dt,
         )

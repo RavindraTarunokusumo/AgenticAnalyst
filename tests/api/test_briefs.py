@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID
 
 from conftest import make_client
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
 
 from analyst_engine.domain.models import (
     Article,
@@ -29,6 +30,7 @@ _CREATED_AT = datetime(2026, 7, 14, 8, 0, tzinfo=UTC)
 
 def _list_brief() -> Brief:
     return Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_BRIEF_ID,
         cadence=Cadence.DAILY,
         covered_start=date(2026, 7, 13),
@@ -58,6 +60,21 @@ def test_get_briefs_defaults_to_daily_and_uses_tomorrow_cutoff(monkeypatch) -> N
     assert list_prior_briefs.await_args is not None
     assert list_prior_briefs.await_args.args[1] == Cadence.DAILY
     assert list_prior_briefs.await_args.kwargs["before"] == date.today() + timedelta(days=1)
+    assert list_prior_briefs.await_args.kwargs["topic_id"] is None
+
+
+def test_get_briefs_forwards_topic_id_filter(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    list_prior_briefs = AsyncMock(return_value=[])
+    monkeypatch.setattr("analyst_engine.api.app.list_prior_briefs", list_prior_briefs)
+
+    client = make_client(monkeypatch)
+    response = client.get("/briefs", params={"topic_id": str(DEFAULT_TOPIC_ID)})
+
+    assert response.status_code == 200
+    assert response.json() == []
+    list_prior_briefs.assert_awaited_once()
+    assert list_prior_briefs.await_args is not None
+    assert list_prior_briefs.await_args.kwargs["topic_id"] == DEFAULT_TOPIC_ID
 
 
 def test_get_briefs_passes_weekly_cadence(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -100,12 +117,14 @@ def test_get_brief_detail_returns_404_for_unknown_id(monkeypatch) -> None:  # ty
 
 def test_get_brief_detail_resolves_citation_joins(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_SOURCE_ID,
         stable_id="ft",
         name="Financial Times",
         normalized_domain="ft.com",
     )
     article = Article(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_ARTICLE_ID,
         source_id=_SOURCE_ID,
         url="https://www.ft.com/content/markets-rally",
@@ -130,6 +149,7 @@ def test_get_brief_detail_resolves_citation_joins(monkeypatch) -> None:  # type:
         ],
     )
     brief = Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_BRIEF_ID,
         cadence=Cadence.DAILY,
         covered_start=date(2026, 7, 13),
@@ -175,6 +195,7 @@ def test_get_brief_detail_degrades_missing_article_citations(monkeypatch) -> Non
         citations=[Citation(article_id=_MISSING_ARTICLE_ID, excerpt="Missing source excerpt.")],
     )
     brief = Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_BRIEF_ID,
         cadence=Cadence.DAILY,
         covered_start=date(2026, 7, 13),

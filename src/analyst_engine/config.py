@@ -124,6 +124,10 @@ class Settings(BaseSettings):
         default="qwen3.5-flash",
         description="Model for batch summaries of 3-5 articles.",
     )
+    topic_assist_model: str = Field(
+        default="qwen3.5-flash",
+        description="Model for topic clarify + keyword suggestion (batch-summary tier).",
+    )
     frontier_model: str = Field(
         default="qwen3.7-max",
         description="Model for daily/weekly/monthly frontier synthesis.",
@@ -200,6 +204,10 @@ class Settings(BaseSettings):
     batch_summary_prompt_version: str = Field(
         default="v1",
         description="Version tag for the batch-summary prompt template.",
+    )
+    topic_assist_prompt_version: str = Field(
+        default="v1",
+        description="Version tag for the topic-assist prompt templates.",
     )
     max_feeds_per_run: int = Field(
         default=50,

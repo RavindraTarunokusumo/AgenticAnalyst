@@ -69,7 +69,8 @@ Responsibilities:
 
 Files:
 - `TODO.md`
-- `docs/iterations/active/*.md`
+- `docs/superpowers/specs/*-design.md`
+- `docs/superpowers/plans/*.md`
 - `docs/iterations/archive/*.md`
 - `docs/changelog.md`
 - `docs/insights.md`
@@ -79,6 +80,11 @@ Responsibilities:
 - completed work
 - why changes happened
 - session lessons
+
+Active work lives in `TODO.md`, with its spec and plan under
+`docs/superpowers/`. A session's record moves to `docs/iterations/archive/`
+once its PR merges. There is no separate "active iterations" directory — the
+spec and plan stay put in `docs/superpowers/` across the session's whole life.
 
 ## Recommended Navigation Order
 

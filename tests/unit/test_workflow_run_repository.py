@@ -39,12 +39,15 @@ async def test_narrative_lookup_is_anchored_to_latest_brief_before_run_boundary(
     session = Mock()
     session.execute = AsyncMock(side_effect=[narrative_id_result, narrative_result])
 
-    narrative = await get_narrative_version_as_of(session, date(2026, 7, 15))
+    narrative = await get_narrative_version_as_of(session, date(2026, 7, 15), topic_id=uuid4())
 
     assert narrative is not None
     assert narrative.id == narrative_id
     first_query = str(session.execute.await_args_list[0].args[0])
     assert "brief.covered_end <" in first_query
+    # Narrative load must be topic-scoped: an unscoped load lets a topic inherit
+    # whichever topic briefed most recently (the T6 cross-topic leak class).
+    assert "brief.topic_id =" in first_query
     assert "narrative_state_version.created_at" not in first_query
 
 

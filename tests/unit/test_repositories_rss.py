@@ -12,7 +12,11 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from alembic.config import Config
-from fixtures import truncate_domain_tables  # type: ignore[import-not-found]
+from fixtures import (  # type: ignore[import-not-found]
+    DEFAULT_TOPIC_ID,
+    ensure_topic,
+    truncate_domain_tables,
+)
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from alembic import command
@@ -151,6 +155,7 @@ async def test_upsert_source_feed_is_idempotent_by_fingerprint(
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="rss-src-upsert",
         name="RSS Source",
         normalized_domain="example.com",
@@ -175,6 +180,7 @@ async def test_upsert_source_feed_is_idempotent_by_fingerprint(
     )
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         persisted_first = await upsert_source_feed(sess, first)
         persisted_second = await upsert_source_feed(sess, second)
@@ -191,6 +197,7 @@ async def test_list_due_source_feeds_orders_nulls_first_and_filters_disabled(
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="rss-src-due",
         name="Due Feeds Source",
         normalized_domain="example.com",
@@ -228,12 +235,13 @@ async def test_list_due_source_feeds_orders_nulls_first_and_filters_disabled(
     )
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         await upsert_source_feed(sess, never_polled)
         await upsert_source_feed(sess, overdue)
         await upsert_source_feed(sess, not_due)
         await upsert_source_feed(sess, disabled)
-        due = await list_due_source_feeds(sess, now)
+        due = await list_due_source_feeds(sess, now, topic_id=DEFAULT_TOPIC_ID)
 
     assert [feed.feed_url_fingerprint for feed in due] == [
         "feed-fp-never",
@@ -246,6 +254,7 @@ async def test_list_eligible_unbatched_articles_excludes_batched_articles(
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="rss-src-unbatched",
         name="Unbatched Source",
         normalized_domain="example.com",
@@ -256,6 +265,7 @@ async def test_list_eligible_unbatched_articles_excludes_batched_articles(
     after_cutoff = datetime(2026, 7, 14, 1, 0, tzinfo=UTC)
     articles = [
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url="https://example.com/a1",
             url_fingerprint="fp-a1",
@@ -265,6 +275,7 @@ async def test_list_eligible_unbatched_articles_excludes_batched_articles(
             cleaned_content="Body one.",
         ),
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url="https://example.com/a2",
             url_fingerprint="fp-a2",
@@ -274,6 +285,7 @@ async def test_list_eligible_unbatched_articles_excludes_batched_articles(
             cleaned_content="Body two.",
         ),
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url="https://example.com/a3",
             url_fingerprint="fp-a3",
@@ -283,6 +295,7 @@ async def test_list_eligible_unbatched_articles_excludes_batched_articles(
             cleaned_content="Body three.",
         ),
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url="https://example.com/a4",
             url_fingerprint="fp-a4",
@@ -292,6 +305,7 @@ async def test_list_eligible_unbatched_articles_excludes_batched_articles(
             cleaned_content="Body four.",
         ),
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url="https://example.com/fr",
             url_fingerprint="fp-fr",
@@ -301,6 +315,7 @@ async def test_list_eligible_unbatched_articles_excludes_batched_articles(
             cleaned_content="Corps.",
         ),
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url="https://example.com/late",
             url_fingerprint="fp-late",
@@ -318,11 +333,14 @@ async def test_list_eligible_unbatched_articles_excludes_batched_articles(
     )
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         for article in articles:
             await save_article(sess, article)
         await save_article_batch(sess, batch)
-        eligible = await list_eligible_unbatched_articles(sess, target_date, ["en"])
+        eligible = await list_eligible_unbatched_articles(
+            sess, target_date, ["en"], topic_id=DEFAULT_TOPIC_ID
+        )
 
     assert [article.url_fingerprint for article in eligible] == ["fp-a4"]
 
@@ -332,6 +350,7 @@ async def test_get_batch_summary_by_identity_returns_match_or_none(
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="rss-src-summary",
         name="Summary Source",
         normalized_domain="example.com",
@@ -339,6 +358,7 @@ async def test_get_batch_summary_by_identity_returns_match_or_none(
     now = datetime(2026, 7, 13, 12, 0, tzinfo=UTC)
     articles = [
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url=f"https://example.com/s{i}",
             url_fingerprint=f"fp-s{i}",
@@ -367,6 +387,7 @@ async def test_get_batch_summary_by_identity_returns_match_or_none(
     )
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         for article in articles:
             await save_article(sess, article)

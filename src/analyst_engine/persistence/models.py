@@ -23,10 +23,27 @@ class Base(DeclarativeBase):
     pass
 
 
+class Topic(Base):
+    __tablename__ = "topic"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    interest_detail: Mapped[str | None] = mapped_column(Text)
+    keywords: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
+    )
+
+
 class Source(Base):
     __tablename__ = "source"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    topic_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     stable_id: Mapped[str] = mapped_column(String(256), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     normalized_domain: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -34,12 +51,17 @@ class Source(Base):
         DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
     )
 
+    __table_args__ = (sa.ForeignKeyConstraint(["topic_id"], ["topic.id"], ondelete="RESTRICT"),)
+
 
 class Article(Base):
     __tablename__ = "article"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    topic_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     url: Mapped[str] = mapped_column(Text, nullable=False)
     url_fingerprint: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
@@ -53,6 +75,8 @@ class Article(Base):
     language: Mapped[str | None] = mapped_column(String(16))
     raw_content_hash: Mapped[str | None] = mapped_column(String(128))
     cleaned_content: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (sa.ForeignKeyConstraint(["topic_id"], ["topic.id"], ondelete="RESTRICT"),)
 
 
 class ArticleBatch(Base):
@@ -125,7 +149,11 @@ class IngestionAttempt(Base):
     __tablename__ = "ingestion_attempt"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    topic_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    # Nullable for source-less direct adds (pasted URL / upload); mirrors Article.source_id.
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     source_feed_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True, index=True
     )
@@ -144,6 +172,7 @@ class IngestionAttempt(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
+        sa.ForeignKeyConstraint(["topic_id"], ["topic.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["source_id"], ["source.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["source_feed_id"], ["source_feed.id"], ondelete="SET NULL"),
     )
@@ -183,6 +212,7 @@ class Brief(Base):
     __tablename__ = "brief"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    topic_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     cadence: Mapped[str] = mapped_column(String(16), nullable=False)
     covered_start: Mapped[date] = mapped_column(Date, nullable=False)
     covered_end: Mapped[date] = mapped_column(Date, nullable=False)
@@ -200,8 +230,16 @@ class Brief(Base):
     )
 
     __table_args__ = (
-        sa.UniqueConstraint(
-            "cadence", "covered_start", "covered_end", name="uq_brief_cadence_interval"
+        sa.ForeignKeyConstraint(["topic_id"], ["topic.id"], ondelete="RESTRICT"),
+        # Per-topic briefs: same cadence/window may exist once per topic (spec §4).
+        # Named as an index to match the initial schema's unique-index style.
+        sa.Index(
+            "ix_brief_topic_cadence_interval",
+            "topic_id",
+            "cadence",
+            "covered_start",
+            "covered_end",
+            unique=True,
         ),
     )
 

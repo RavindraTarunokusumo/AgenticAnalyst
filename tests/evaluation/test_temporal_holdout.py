@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fixtures import FakeModelGateway
+from fixtures import DEFAULT_TOPIC_ID, FakeModelGateway
 
 from analyst_engine.config import Settings
 from analyst_engine.workflows.runner import WorkflowRunner
@@ -63,7 +63,7 @@ class TemporalHoldoutRunner:
         virtual = start
         for _ in range(days):
             d = virtual
-            run = await self.runner.run_daily(d)
+            run = await self.runner.run_daily(d, topic_id=DEFAULT_TOPIC_ID)
             runs.append(
                 {
                     "cadence": "daily",
@@ -73,10 +73,10 @@ class TemporalHoldoutRunner:
                 }
             )
             if virtual.weekday() == 6:
-                w = await self.runner.run_weekly(virtual)
+                w = await self.runner.run_weekly(virtual, topic_id=DEFAULT_TOPIC_ID)
                 runs.append({"cadence": "weekly", "date": virtual.isoformat(), "run_id": str(w.id)})
             if virtual.day == 1:
-                m = await self.runner.run_monthly(virtual)
+                m = await self.runner.run_monthly(virtual, topic_id=DEFAULT_TOPIC_ID)
                 runs.append(
                     {"cadence": "monthly", "date": virtual.isoformat(), "run_id": str(m.id)}
                 )

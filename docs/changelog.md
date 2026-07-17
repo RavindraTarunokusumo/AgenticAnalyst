@@ -56,6 +56,58 @@ Summary:
 - Migration notes: One initial migration (963e5ab691b1) creates all core tables + checkpoint tables. Use Alembic for future revisions; downgrades supported where provided.
 - Related PR/commit: Tasks 1-6 (c717d74, 1f88183, 3600a6a, f3d585d, 90a39fe+0bb9204, 86e41df+49ccabc); Task 7 documentation reconciliation is tracked in TODO.md. See accepted spec docs/superpowers/specs/2026-07-11-runtime-persistence-repair-design.md and plan.
 
+## 2026-07-17 — Topic-First Analyst (Slice 1)
+
+Summary:
+- What changed: The topic became the top-level organising unit. New `Topic`
+  entity (name, description, retained `interest_detail`, non-empty `keywords[]`)
+  with `topic_id` on source/article/brief/ingestion_attempt; `article.source_id`
+  and `ingestion_attempt.source_id` are now nullable (direct pasted-link/upload
+  adds carry a topic but no source). Ingestion is keyword-filtered for topic
+  relevance at two asymmetric points (title+summary before fetch — the recall
+  ceiling; `cleaned_content` before persist — precision), via a pure
+  deterministic matcher (`topics/matcher.py`, no embeddings); rejected
+  candidates still record an observable `not_relevant` attempt. Pipelines,
+  the scheduler, article/feed selection, and narrative-memory loading are all
+  per-topic (`list_due_source_feeds`, `list_eligible_unbatched_articles`, and
+  `get_narrative_version_as_of` gained `topic_id`; the brief unique
+  index is now `(topic_id, cadence, covered_start, covered_end)`). New
+  `TOPIC_ASSIST` gateway task + domain-general clarify/keyword-suggestion prompts
+  (`topics/prompts.py`, R7a — no hard-coded domain vocabulary). API gained topics
+  CRUD, stateless `POST /topics/clarify` + `POST /topics/suggest-keywords`
+  (degrade to 503, never crash), `topic_id` on ingestion routes, and a `topic_id`
+  brief filter. Frontend is now topic-first: a guided `TopicOnboarding`
+  (interest → clarify → editable keyword chips → sources → create),
+  `TopicSettings` (edit sources R6, re-suggest keywords R8), a topic selector,
+  and a topic-scoped `AddContentPanel`; the old source-first `Onboarding` was
+  removed.
+- Why: The product is an analyst that follows and briefs a user about topics
+  they choose. Article selection was previously global — every model call
+  processed every ingested article regardless of what the user cared about — so
+  "only Reuters articles about the US-Iran war" was inexpressible. Topic-scoping
+  the whole pipeline (not just an onboarding form) is the load-bearing change.
+- User-visible impact: Users start by naming a topic and describing their
+  interest; the system asks AI-generated clarifying questions and suggests
+  editable keywords, then filters every source to what's relevant to that topic.
+  Users provide sources, paste links, add feeds, or upload files per topic;
+  pasted/uploaded content joins the topic's article pool and waits for the next
+  scheduled cadence (adding content never triggers a run, R5). Briefs are
+  per-topic. Auto Search (SearXNG-backed source suggestion) and analysis-style
+  are explicitly deferred to Slices 2 and 3.
+- Migration notes: Revision `00f3ae192a5a` (on `6b135f7a55de`) adds the `topic`
+  table and `topic_id` FKs, makes the two `source_id` columns nullable, and
+  swaps the brief unique index. Upgrade seeds a `Default` topic (keywords
+  sentinel `["__default__"]`) and backfills existing rows so `topic_id` lands
+  non-null; adopted sources go dormant against the sentinel (accepted, spec §6).
+  Run against a real Postgres (upgrade/downgrade + backfill).
+- Related PR/commit: Tasks T1–T14, tracked in `TODO.md` (to be archived to
+  `docs/iterations/archive/` on merge). Accepted spec
+  `docs/superpowers/specs/2026-07-16-topic-first-analyst-design.md` and plan
+  `docs/superpowers/plans/2026-07-16-topic-first-analyst.md`.
+- Known gap: the R7a behavioral check (a live model call on 3 unlike subjects)
+  was deferred as a billed call; the prompt was verified by static read + a
+  structural 3-domain check + a domain-blocklist unit tripwire instead.
+
 ## <YYYY-MM-DD> — <Change Title>
 
 Summary:

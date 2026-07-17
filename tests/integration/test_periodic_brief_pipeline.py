@@ -43,11 +43,18 @@ from analyst_engine.workflows.runner import WorkflowRunner
 
 try:
     from fixtures import (  # type: ignore[import-not-found]
+        DEFAULT_TOPIC_ID,
         docker_endpoint_available,
+        ensure_topic,
         truncate_domain_tables,
     )
 except ImportError:  # pragma: no cover
-    from tests.fixtures import docker_endpoint_available, truncate_domain_tables
+    from tests.fixtures import (
+        DEFAULT_TOPIC_ID,
+        docker_endpoint_available,
+        ensure_topic,
+        truncate_domain_tables,
+    )
 
 try:
     from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
@@ -204,6 +211,7 @@ async def _seed_batch_summary(
     # published_at since only the batch's window membership is under test.
     articles = [
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url=f"https://example.com/periodic-{key}-{index}",
             url_fingerprint=f"fp-periodic-{key}-{index}",
@@ -241,11 +249,13 @@ async def test_weekly_pipeline_persists_brief_and_is_idempotent_on_rerun(
     test_settings: Settings,
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="periodic-integration-src-weekly",
         name="Periodic Integration Source",
         normalized_domain="example.com",
     )
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
 
     week_start = date(2026, 7, 6)
@@ -268,7 +278,7 @@ async def test_weekly_pipeline_persists_brief_and_is_idempotent_on_rerun(
         clock=datetime(2026, 7, 9, 12, 0, tzinfo=UTC),
     )
 
-    first = await pipeline.run()
+    first = await pipeline.run(topic_id=DEFAULT_TOPIC_ID)
 
     assert first.covered_start == week_start
     assert first.covered_end == date(2026, 7, 12)
@@ -279,7 +289,7 @@ async def test_weekly_pipeline_persists_brief_and_is_idempotent_on_rerun(
 
     async with session_scope(migrated) as sess:
         brief = await get_brief_by_cadence_interval(
-            sess, Cadence.WEEKLY, week_start, date(2026, 7, 12)
+            sess, Cadence.WEEKLY, week_start, date(2026, 7, 12), topic_id=DEFAULT_TOPIC_ID
         )
         assert brief is not None
         assert brief.id == first.brief_id
@@ -292,7 +302,7 @@ async def test_weekly_pipeline_persists_brief_and_is_idempotent_on_rerun(
         ).scalar_one_or_none()
         assert narrative is not None
 
-    second = await pipeline.run()
+    second = await pipeline.run(topic_id=DEFAULT_TOPIC_ID)
 
     assert second.workflow_run_id == first.workflow_run_id
     assert second.brief_id == first.brief_id
@@ -305,11 +315,13 @@ async def test_monthly_pipeline_persists_brief_from_activity_across_weeks(
     test_settings: Settings,
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="periodic-integration-src-monthly",
         name="Periodic Integration Source Monthly",
         normalized_domain="example.com",
     )
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
 
     for day, key in ((3, "week1"), (17, "week3")):
@@ -329,7 +341,7 @@ async def test_monthly_pipeline_persists_brief_from_activity_across_weeks(
         clock=datetime(2026, 7, 20, 12, 0, tzinfo=UTC),
     )
 
-    result = await pipeline.run()
+    result = await pipeline.run(topic_id=DEFAULT_TOPIC_ID)
 
     assert result.covered_start == date(2026, 7, 1)
     assert result.covered_end == date(2026, 7, 31)
@@ -347,11 +359,13 @@ async def test_batch_summary_cited_by_daily_brief_is_still_eligible_for_weekly_b
     summary cited by a Daily brief must still be independently selected by
     that week's Weekly brief."""
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="periodic-integration-src-cross-cadence",
         name="Cross Cadence Source",
         normalized_domain="example.com",
     )
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
 
     published_at = datetime(2026, 7, 8, 12, 0, tzinfo=UTC)
@@ -360,6 +374,7 @@ async def test_batch_summary_cited_by_daily_brief_is_still_eligible_for_weekly_b
     )
 
     daily_brief = Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         cadence=Cadence.DAILY,
         covered_start=date(2026, 7, 8),
         covered_end=date(2026, 7, 8),
@@ -380,7 +395,7 @@ async def test_batch_summary_cited_by_daily_brief_is_still_eligible_for_weekly_b
         clock=datetime(2026, 7, 9, 12, 0, tzinfo=UTC),
     )
 
-    result = await pipeline.run()
+    result = await pipeline.run(topic_id=DEFAULT_TOPIC_ID)
 
     assert result.is_no_content is False
     assert result.summaries_selected == 1

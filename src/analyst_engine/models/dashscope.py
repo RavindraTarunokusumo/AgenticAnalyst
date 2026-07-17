@@ -62,6 +62,7 @@ class DashScopeAdapter(ModelGateway):
         )
         self._model_map = {
             ModelTask.BATCH_SUMMARY: settings.batch_summary_model,
+            ModelTask.TOPIC_ASSIST: settings.topic_assist_model,
             ModelTask.FRONTIER_DAILY: settings.frontier_model,
             ModelTask.FRONTIER_WEEKLY: settings.frontier_model,
             ModelTask.FRONTIER_MONTHLY: settings.frontier_model,

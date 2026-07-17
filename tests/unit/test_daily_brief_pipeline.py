@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
 import pytest
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
 
 from analyst_engine.batching.batcher import batch_articles
 from analyst_engine.config import Settings
@@ -52,6 +53,7 @@ def _settings() -> Settings:
 
 def _source() -> Source:
     return Source(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_SOURCE_ID,
         stable_id="pipeline-src",
         name="Pipeline Source",
@@ -68,6 +70,7 @@ def _article(
 ) -> Article:
     article_uuid = article_id or uuid4()
     return Article(
+        topic_id=DEFAULT_TOPIC_ID,
         id=article_uuid,
         source_id=_SOURCE_ID,
         url=f"https://example.com/{article_uuid}",
@@ -152,11 +155,17 @@ class _PipelineHarness:
         async def fake_session_scope(_factory: object) -> Any:
             yield object()
 
-        async def fake_list_due(_session: object, _now: datetime) -> list[SourceFeed]:
+        async def fake_list_due(
+            _session: object, _now: datetime, *, topic_id: object | None = None
+        ) -> list[SourceFeed]:
             return list(self.due_feeds)
 
         async def fake_list_eligible(
-            _session: object, _before_date: date, _languages: list[str]
+            _session: object,
+            _before_date: date,
+            _languages: list[str],
+            *,
+            topic_id: object | None = None,
         ) -> list[Article]:
             return list(self.eligible_articles)
 
@@ -203,7 +212,12 @@ class _PipelineHarness:
             return self.existing_workflow_run_by_key.get(idempotency_key)
 
         async def fake_get_brief(
-            _session: object, cadence: Cadence, start: date, end: date
+            _session: object,
+            cadence: Cadence,
+            start: date,
+            end: date,
+            *,
+            topic_id: object | None = None,
         ) -> Brief | None:
             if self.brief_by_interval is None:
                 return None
@@ -308,13 +322,13 @@ async def test_no_eligible_articles_short_circuits_without_run_daily(
         WorkflowRun(
             id=_RUN_ID,
             cadence=Cadence.DAILY,
-            idempotency_key=f"daily:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
+            idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
             status=WorkflowStatus.SUCCEEDED,
         )
     )
     pipeline = harness.build_pipeline(runner)
 
-    result = await pipeline.run(_TARGET_DATE)
+    result = await pipeline.run(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
     assert result.is_no_content is True
     assert result.summaries_selected == 0
@@ -333,7 +347,9 @@ async def test_no_new_content_but_existing_terminal_run_still_calls_run_daily(
     distinct from a real no-content day where no run has ever been created.
     """
     harness = _PipelineHarness(monkeypatch)
-    idempotency_key = f"daily:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}"
+    idempotency_key = (
+        f"daily:{DEFAULT_TOPIC_ID}:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}"
+    )
     existing_run = WorkflowRun(
         id=_RUN_ID,
         cadence=Cadence.DAILY,
@@ -342,6 +358,7 @@ async def test_no_new_content_but_existing_terminal_run_still_calls_run_daily(
     )
     harness.existing_workflow_run_by_key[idempotency_key] = existing_run
     harness.brief_by_interval = Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_BRIEF_ID,
         cadence=Cadence.DAILY,
         covered_start=_TARGET_DATE,
@@ -354,7 +371,7 @@ async def test_no_new_content_but_existing_terminal_run_still_calls_run_daily(
     runner = _FakeRunner(existing_run)
     pipeline = harness.build_pipeline(runner)
 
-    result = await pipeline.run(_TARGET_DATE)
+    result = await pipeline.run(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
     assert result.is_no_content is False
     assert result.workflow_run_id == _RUN_ID
@@ -372,10 +389,11 @@ async def test_successful_pipeline_calls_run_daily_with_selected_summaries(
     workflow_run = WorkflowRun(
         id=_RUN_ID,
         cadence=Cadence.DAILY,
-        idempotency_key=f"daily:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
+        idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
         status=WorkflowStatus.SUCCEEDED,
     )
     harness.brief_by_interval = Brief(
+        topic_id=DEFAULT_TOPIC_ID,
         id=_BRIEF_ID,
         cadence=Cadence.DAILY,
         covered_start=_TARGET_DATE,
@@ -388,7 +406,7 @@ async def test_successful_pipeline_calls_run_daily_with_selected_summaries(
     runner = _FakeRunner(workflow_run)
     pipeline = harness.build_pipeline(runner)
 
-    result = await pipeline.run(_TARGET_DATE)
+    result = await pipeline.run(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
     runner.run_daily.assert_awaited_once()
     await_args = runner.run_daily.await_args
@@ -419,13 +437,13 @@ async def test_existing_batch_key_is_reused_without_insert(
     runner = _FakeRunner(
         WorkflowRun(
             cadence=Cadence.DAILY,
-            idempotency_key=f"daily:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
+            idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
             status=WorkflowStatus.SUCCEEDED,
         )
     )
     pipeline = harness.build_pipeline(runner)
 
-    result = await pipeline.run(_TARGET_DATE)
+    result = await pipeline.run(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
     assert result.batches_reused == 1
     assert result.batches_created == 0
@@ -445,13 +463,13 @@ async def test_existing_batch_summary_is_reused_without_summarize_call(
     runner = _FakeRunner(
         WorkflowRun(
             cadence=Cadence.DAILY,
-            idempotency_key=f"daily:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
+            idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
             status=WorkflowStatus.SUCCEEDED,
         )
     )
     pipeline = harness.build_pipeline(runner)
 
-    result = await pipeline.run(_TARGET_DATE)
+    result = await pipeline.run(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
     assert result.summaries_reused == 1
     assert result.summaries_created == 0
@@ -475,13 +493,13 @@ async def test_already_cited_daily_summary_is_excluded_from_selection(
     runner = _FakeRunner(
         WorkflowRun(
             cadence=Cadence.DAILY,
-            idempotency_key=f"daily:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
+            idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
             status=WorkflowStatus.SUCCEEDED,
         )
     )
     pipeline = harness.build_pipeline(runner)
 
-    result = await pipeline.run(_TARGET_DATE)
+    result = await pipeline.run(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
     assert result.is_no_content is True
     assert result.summaries_selected == 0
@@ -494,7 +512,7 @@ async def test_summary_cited_by_this_run_own_prior_brief_is_not_excluded(
 ) -> None:
     """A retry of the SAME target_date after its own prior success must still
     select the summary its own brief already cites - this is what makes
-    pipeline.run(target_date) idempotent (spec success criterion 7). Only
+    pipeline.run(target_date, topic_id=DEFAULT_TOPIC_ID) idempotent (spec success criterion 7). Only
     citations from a DIFFERENT date's brief should exclude a summary.
     """
     harness = _PipelineHarness(monkeypatch)
@@ -503,13 +521,13 @@ async def test_summary_cited_by_this_run_own_prior_brief_is_not_excluded(
     runner = _FakeRunner(
         WorkflowRun(
             cadence=Cadence.DAILY,
-            idempotency_key=f"daily:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
+            idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
             status=WorkflowStatus.SUCCEEDED,
         )
     )
     pipeline = harness.build_pipeline(runner)
 
-    result = await pipeline.run(_TARGET_DATE)
+    result = await pipeline.run(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
     assert result.is_no_content is False
     assert result.summaries_selected == 1
@@ -544,13 +562,13 @@ async def test_summary_without_article_on_target_date_is_excluded(
     runner = _FakeRunner(
         WorkflowRun(
             cadence=Cadence.DAILY,
-            idempotency_key=f"daily:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
+            idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
             status=WorkflowStatus.SUCCEEDED,
         )
     )
     pipeline = harness.build_pipeline(runner)
 
-    result = await pipeline.run(_TARGET_DATE)
+    result = await pipeline.run(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
     assert result.is_no_content is True
     runner.run_daily.assert_not_called()
@@ -576,13 +594,13 @@ async def test_summary_with_article_after_target_date_is_excluded(
     runner = _FakeRunner(
         WorkflowRun(
             cadence=Cadence.DAILY,
-            idempotency_key=f"daily:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
+            idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
             status=WorkflowStatus.SUCCEEDED,
         )
     )
     pipeline = harness.build_pipeline(runner)
 
-    result = await pipeline.run(_TARGET_DATE)
+    result = await pipeline.run(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
     assert result.is_no_content is True
     runner.run_daily.assert_not_called()
@@ -634,13 +652,13 @@ async def test_summary_validation_error_skips_one_batch_and_continues(
     runner = _FakeRunner(
         WorkflowRun(
             cadence=Cadence.DAILY,
-            idempotency_key=f"daily:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
+            idempotency_key=f"daily:{DEFAULT_TOPIC_ID}:{_TARGET_DATE.isoformat()}:{_TARGET_DATE.isoformat()}",
             status=WorkflowStatus.SUCCEEDED,
         )
     )
     pipeline = harness.build_pipeline(runner)
 
-    result = await pipeline.run(_TARGET_DATE)
+    result = await pipeline.run(_TARGET_DATE, topic_id=DEFAULT_TOPIC_ID)
 
     assert result.summaries_created == 1
     assert result.summaries_selected == 1

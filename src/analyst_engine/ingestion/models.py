@@ -21,13 +21,14 @@ class FeedFetchResult:
 
 @dataclass(frozen=True)
 class ArticleCandidate:
-    source_id: UUID
+    source_id: UUID | None
     source_feed_id: UUID | None
     url: str
     title: str | None
     author: str | None
     published_at: datetime | None
     entry_id: str | None
+    summary: str | None
 
 
 @dataclass(frozen=True)

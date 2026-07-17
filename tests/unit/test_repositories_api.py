@@ -10,7 +10,11 @@ from uuid import uuid4
 
 import pytest
 from alembic.config import Config
-from fixtures import truncate_domain_tables  # type: ignore[import-not-found]
+from fixtures import (  # type: ignore[import-not-found]
+    DEFAULT_TOPIC_ID,
+    ensure_topic,
+    truncate_domain_tables,
+)
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from alembic import command
@@ -25,9 +29,11 @@ from analyst_engine.domain.models import (
     IngestionStatus,
     Source,
     SourceFeed,
+    Topic,
 )
 from analyst_engine.persistence.engine import get_async_engine, get_session_factory, session_scope
 from analyst_engine.persistence.repositories import (
+    create_topic,
     get_batch_summaries_by_ids,
     list_ingestion_attempts,
     list_source_feeds_for_source,
@@ -152,6 +158,7 @@ async def test_list_source_feeds_for_source_orders_by_url_and_includes_disabled(
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="api-src-feeds",
         name="API Feeds Source",
         normalized_domain="example.com",
@@ -174,6 +181,7 @@ async def test_list_source_feeds_for_source_orders_by_url_and_includes_disabled(
     ]
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         for feed in feeds:
             await upsert_source_feed(sess, feed)
@@ -189,10 +197,53 @@ async def test_list_source_feeds_for_source_orders_by_url_and_includes_disabled(
 
 
 @pytest.mark.asyncio
+async def test_record_source_less_ingestion_attempt_round_trips(
+    migrated: async_sessionmaker[AsyncSession],
+) -> None:
+    """Regression: pasted-link / upload attempts have topic_id and null source_id.
+
+    T5 domain allowed source_id=None, but the ORM/migration left the column
+    NOT NULL. Unit tests that fake persistence never hit Postgres; this test
+    exercises the real repository path.
+    """
+    topic = Topic(
+        name="Direct-add topic",
+        description="Topic for source-less ingestion attempts",
+        keywords=["direct", "paste"],
+    )
+    attempt = IngestionAttempt(
+        topic_id=topic.id,
+        source_id=None,
+        requested_url="https://example.com/pasted-link",
+        canonical_url="https://example.com/pasted-link",
+        url_fingerprint="fp-pasted-link",
+        status=IngestionStatus.SUCCEEDED,
+        started_at=datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+        completed_at=datetime(2026, 7, 16, 12, 0, 1, tzinfo=UTC),
+    )
+
+    async with session_scope(migrated) as sess:
+        await create_topic(sess, topic)
+        saved = await record_ingestion_attempt(sess, attempt)
+        listed = await list_ingestion_attempts(sess, limit=10)
+
+    assert saved.id == attempt.id
+    assert saved.topic_id == topic.id
+    assert saved.source_id is None
+    assert saved.requested_url == "https://example.com/pasted-link"
+    assert saved.status is IngestionStatus.SUCCEEDED
+    assert len(listed) == 1
+    assert listed[0].id == attempt.id
+    assert listed[0].source_id is None
+    assert listed[0].topic_id == topic.id
+
+
+@pytest.mark.asyncio
 async def test_list_ingestion_attempts_filters_status_orders_newest_first_and_clamps_limit(
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="api-src-attempts",
         name="API Attempts Source",
         normalized_domain="example.com",
@@ -200,18 +251,21 @@ async def test_list_ingestion_attempts_filters_status_orders_newest_first_and_cl
     base_time = datetime(2026, 7, 13, 12, 0, tzinfo=UTC)
     attempts = [
         IngestionAttempt(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             requested_url="https://example.com/old",
             status=IngestionStatus.SUCCEEDED,
             started_at=base_time,
         ),
         IngestionAttempt(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             requested_url="https://example.com/new",
             status=IngestionStatus.SUCCEEDED,
             started_at=base_time + timedelta(hours=1),
         ),
         IngestionAttempt(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             requested_url="https://example.com/failed",
             status=IngestionStatus.FAILED,
@@ -220,6 +274,7 @@ async def test_list_ingestion_attempts_filters_status_orders_newest_first_and_cl
     ]
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         for attempt in attempts:
             await record_ingestion_attempt(sess, attempt)
@@ -242,6 +297,7 @@ async def test_get_batch_summaries_by_ids_bulk_lookup_and_empty_input(
     migrated: async_sessionmaker[AsyncSession],
 ) -> None:
     source = Source(
+        topic_id=DEFAULT_TOPIC_ID,
         stable_id="api-src-summaries",
         name="API Summaries Source",
         normalized_domain="example.com",
@@ -249,6 +305,7 @@ async def test_get_batch_summaries_by_ids_bulk_lookup_and_empty_input(
     now = datetime(2026, 7, 13, 12, 0, tzinfo=UTC)
     articles = [
         Article(
+            topic_id=DEFAULT_TOPIC_ID,
             source_id=source.id,
             url=f"https://example.com/s{i}",
             url_fingerprint=f"fp-s{i}",
@@ -290,6 +347,7 @@ async def test_get_batch_summaries_by_ids_bulk_lookup_and_empty_input(
     ]
 
     async with session_scope(migrated) as sess:
+        await ensure_topic(sess)
         await upsert_source(sess, source)
         for article in articles:
             await save_article(sess, article)

@@ -6,6 +6,7 @@ All nodes consume and produce validated Pydantic state where possible.
 from __future__ import annotations
 
 from datetime import date
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +23,7 @@ class BriefGenerationInput(BaseModel):
     """Input visible to a frontier synthesis node."""
 
     cadence: Cadence
+    topic_id: UUID
     covered_start: date
     covered_end: date
     batch_summaries: list[BatchSummary] = Field(default_factory=list)

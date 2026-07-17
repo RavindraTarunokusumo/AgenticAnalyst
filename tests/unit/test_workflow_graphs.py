@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 import pytest
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
 from pydantic import BaseModel, ValidationError
 
 from analyst_engine.domain.models import BatchSummary, Cadence, Citation, NarrativeStateVersion
@@ -107,6 +108,7 @@ def _input(cadence: Cadence) -> BriefGenerationInput:
         covered_end=date(2026, 7, 31),
         batch_summaries=[summary],
         correlation_id=str(run_id),
+        topic_id=DEFAULT_TOPIC_ID,
     )
 
 
@@ -189,6 +191,7 @@ async def test_each_cadence_graph_commits_brief_and_narrative(
     )
     inp = _input(cadence)
     state = {
+        "topic_id": str(DEFAULT_TOPIC_ID),
         "run_id": inp.correlation_id,
         "cadence": cadence.value,
         "covered_start": inp.covered_start.isoformat(),
@@ -228,6 +231,7 @@ async def test_synthesize_persists_embedding_alongside_brief(
     monkeypatch.setattr("analyst_engine.workflows.graphs.save_embedding", save_embedding)
     inp = _input(Cadence.DAILY)
     state = {
+        "topic_id": str(DEFAULT_TOPIC_ID),
         "cadence": Cadence.DAILY.value,
         "covered_start": inp.covered_start.isoformat(),
         "covered_end": inp.covered_end.isoformat(),
@@ -263,6 +267,7 @@ async def test_synthesize_swallows_embed_failure_and_still_persists_brief(
     monkeypatch.setattr("analyst_engine.workflows.graphs.save_embedding", save_embedding)
     inp = _input(Cadence.DAILY)
     state = {
+        "topic_id": str(DEFAULT_TOPIC_ID),
         "cadence": Cadence.DAILY.value,
         "covered_start": inp.covered_start.isoformat(),
         "covered_end": inp.covered_end.isoformat(),

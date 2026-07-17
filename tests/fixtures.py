@@ -21,9 +21,15 @@ from analyst_engine.domain.models import (
     GroupingMethod,
     NarrativeStateVersion,
     Source,
+    Topic,
 )
 from analyst_engine.models.gateway import ModelGateway, ModelTask, ModelUsage
 from analyst_engine.persistence.engine import session_scope
+
+# Shared default topic for unit fixtures that do not care about multi-topic isolation.
+# Integration tests that hit Postgres should persist a real Topic row first
+# (see ensure_topic).
+DEFAULT_TOPIC_ID = uuid.UUID("00000000-0000-0000-0000-0000000000aa")
 
 _DOMAIN_TABLES = (
     "workflow_run",
@@ -37,6 +43,7 @@ _DOMAIN_TABLES = (
     "article_batch",
     "article",
     "source",
+    "topic",
 )
 
 
@@ -67,7 +74,6 @@ class FakeModelGateway(ModelGateway):
             )
             return result, ModelUsage(model="fake", prompt_tokens=10, completion_tokens=20)
 
-        # batch or embed fallbacks
         result = output_schema(brief_content="batch", narrative_state={}, change_log=[])
         return result, ModelUsage(model="fake")
 
@@ -81,19 +87,64 @@ class FakeModelGateway(ModelGateway):
         return vector, ModelUsage(model="fake-embed")
 
 
-def make_source() -> Source:
-    return Source(stable_id="test-src", name="Test", normalized_domain="example.com")
-
-
-def make_article(source_id: uuid.UUID, published: date) -> Article:
-    return Article(
-        source_id=source_id,
-        url=f"https://example.com/{published}",
-        url_fingerprint=f"fp-{published}",
-        title=f"Article {published}",
-        published_at=datetime.combine(published, datetime.min.time(), tzinfo=UTC),
-        cleaned_content=f"Clean body for {published}.",
+def make_topic(
+    *,
+    topic_id: uuid.UUID | None = None,
+    name: str = "Default Test Topic",
+    description: str = "Shared fixture topic",
+    keywords: list[str] | None = None,
+) -> Topic:
+    return Topic(
+        id=topic_id or DEFAULT_TOPIC_ID,
+        name=name,
+        description=description,
+        keywords=keywords if keywords is not None else ["fixture", "test"],
     )
+
+
+def make_source(
+    *,
+    topic_id: uuid.UUID | None = None,
+    stable_id: str = "test-src",
+    name: str = "Test",
+    normalized_domain: str = "example.com",
+    source_id: uuid.UUID | None = None,
+) -> Source:
+    kwargs: dict[str, Any] = {
+        "topic_id": topic_id or DEFAULT_TOPIC_ID,
+        "stable_id": stable_id,
+        "name": name,
+        "normalized_domain": normalized_domain,
+    }
+    if source_id is not None:
+        kwargs["id"] = source_id
+    return Source(**kwargs)
+
+
+def make_article(
+    source_id: uuid.UUID | None,
+    published: date,
+    *,
+    topic_id: uuid.UUID | None = None,
+    title: str | None = None,
+    url_fingerprint: str | None = None,
+    language: str | None = "en",
+    cleaned_content: str | None = None,
+    article_id: uuid.UUID | None = None,
+) -> Article:
+    kwargs: dict[str, Any] = {
+        "topic_id": topic_id or DEFAULT_TOPIC_ID,
+        "source_id": source_id,
+        "url": f"https://example.com/{published}",
+        "url_fingerprint": url_fingerprint or f"fp-{published}",
+        "title": title or f"Article {published}",
+        "published_at": datetime.combine(published, datetime.min.time(), tzinfo=UTC),
+        "cleaned_content": cleaned_content or f"Clean body for {published}.",
+        "language": language,
+    }
+    if article_id is not None:
+        kwargs["id"] = article_id
+    return Article(**kwargs)
 
 
 def make_batch(articles: list[Article]) -> ArticleBatch:
@@ -116,16 +167,31 @@ def make_summary(batch: ArticleBatch) -> BatchSummary:
     )
 
 
-def make_brief(cadence: Cadence, start: date, end: date) -> Brief:
-    return Brief(
-        cadence=cadence,
-        covered_start=start,
-        covered_end=end,
-        content=f"{cadence} brief",
-        cited_batch_summary_ids=[uuid.uuid4()],
-        cited_article_ids=[uuid.uuid4()],
-        created_by_run_id=uuid.uuid4(),
-    )
+def make_brief(
+    cadence: Cadence,
+    start: date,
+    end: date,
+    *,
+    topic_id: uuid.UUID | None = None,
+    content: str | None = None,
+    brief_id: uuid.UUID | None = None,
+    created_by_run_id: uuid.UUID | None = None,
+    cited_batch_summary_ids: list[uuid.UUID] | None = None,
+    cited_article_ids: list[uuid.UUID] | None = None,
+) -> Brief:
+    kwargs: dict[str, Any] = {
+        "topic_id": topic_id or DEFAULT_TOPIC_ID,
+        "cadence": cadence,
+        "covered_start": start,
+        "covered_end": end,
+        "content": content if content is not None else f"{cadence} brief",
+        "cited_batch_summary_ids": cited_batch_summary_ids or [uuid.uuid4()],
+        "cited_article_ids": cited_article_ids or [uuid.uuid4()],
+        "created_by_run_id": created_by_run_id or uuid.uuid4(),
+    }
+    if brief_id is not None:
+        kwargs["id"] = brief_id
+    return Brief(**kwargs)
 
 
 def make_narrative() -> NarrativeStateVersion:
@@ -136,16 +202,21 @@ def make_narrative() -> NarrativeStateVersion:
     )
 
 
-async def truncate_domain_tables(session_factory: async_sessionmaker[AsyncSession]) -> None:
-    """Wipe all domain tables so each test starts from a clean slate.
+async def ensure_topic(session: AsyncSession, topic: Topic | None = None) -> Topic:
+    """Persist ``topic`` (or the shared default) if it is not already present."""
 
-    Repository/integration test modules that read DATABASE_URL (CI's shared
-    Postgres service, not a per-module Testcontainer) all point at the same
-    physical database with no other isolation between tests. Without this,
-    a row inserted by one test/module collides with an identical fixture
-    literal in another (unique constraints) or inflates unscoped COUNT/ORDER
-    BY assertions in a later test.
-    """
+    from analyst_engine.persistence.repositories import create_topic, get_topic
+
+    candidate = topic if topic is not None else make_topic()
+    existing = await get_topic(session, candidate.id)
+    if existing is not None:
+        return existing
+    return await create_topic(session, candidate)
+
+
+async def truncate_domain_tables(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """Wipe all domain tables so each test starts from a clean slate."""
+
     async with session_scope(session_factory) as session:
         await session.execute(
             text(f"TRUNCATE TABLE {', '.join(_DOMAIN_TABLES)} RESTART IDENTITY CASCADE")
@@ -153,12 +224,8 @@ async def truncate_domain_tables(session_factory: async_sessionmaker[AsyncSessio
 
 
 def docker_endpoint_available() -> bool:
-    """Return True if a Docker endpoint is reachable.
+    """Return True if a Docker endpoint is reachable."""
 
-    Contract: docker.from_env(timeout=3), ping(), close().
-    Returns True only on successful ping; False on any failure.
-    No false positives from DOCKER_HOST presence or socket paths.
-    """
     client = None
     try:
         import docker  # type: ignore[import-untyped]

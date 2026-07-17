@@ -27,6 +27,7 @@ from analyst_engine.persistence.checkpoints import get_async_checkpointer
 from analyst_engine.persistence.engine import get_async_engine, get_session_factory
 from analyst_engine.pipeline.daily_brief import DailyBriefPipeline
 from analyst_engine.pipeline.periodic_brief import PeriodicBriefPipeline
+from analyst_engine.topics.matcher import matches
 from analyst_engine.workflows.runner import WorkflowRunner
 
 CheckpointerFactory = Callable[[], AbstractAsyncContextManager[AsyncPostgresSaver]]
@@ -86,6 +87,7 @@ def build_ingestion_service(runtime: RuntimeDependencies) -> IngestionService:
         fallback_extractor=fallback_extractor,
         settings=runtime.settings,
         file_extractors=file_extractors,
+        is_relevant=matches,
     )
 
 

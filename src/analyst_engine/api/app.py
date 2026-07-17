@@ -5,34 +5,50 @@ from __future__ import annotations
 import math
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import cast
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Security, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from analyst_engine.api.readiness import ReadinessStatus, check_readiness
 from analyst_engine.config import Settings
-from analyst_engine.domain.models import Cadence, IngestionStatus, Source, SourceFeed
+from analyst_engine.domain.models import (
+    USER_PROVIDED_SOURCE_NAME,
+    Cadence,
+    IngestionStatus,
+    Source,
+    SourceFeed,
+    Topic,
+)
 from analyst_engine.ingestion.canonicalize import UrlValidationError, canonicalize_url
-from analyst_engine.models.gateway import RetryableModelError, TerminalModelError
+from analyst_engine.models.gateway import ModelTask, RetryableModelError, TerminalModelError
 from analyst_engine.persistence.engine import session_scope
 from analyst_engine.persistence.repositories import (
+    TopicInUseError,
+    TopicNotFoundError,
+    create_topic,
+    delete_topic,
     get_articles_by_ids,
     get_batch_summaries_by_ids,
     get_brief_by_id,
     get_source_by_stable_id,
     get_sources_by_ids,
+    get_topic,
     list_ingestion_attempts,
     list_prior_briefs,
     list_source_feeds_for_source,
     list_sources,
+    list_sources_for_topic,
+    list_topics,
     search_embeddings_by_similarity,
+    update_topic,
     upsert_source,
     upsert_source_feed,
 )
@@ -43,6 +59,12 @@ from analyst_engine.runtime import (
     build_ingestion_service,
     build_periodic_brief_pipeline,
     create_runtime,
+)
+from analyst_engine.topics.prompts import (
+    ClarifyingQuestions,
+    SuggestedKeywords,
+    build_clarify_messages,
+    build_keyword_suggestion_messages,
 )
 from analyst_engine.workflows.runner import WorkflowRunner
 
@@ -59,6 +81,7 @@ class TriggerRequest(BaseModel):
     cadence: str
     covered_start: date
     covered_end: date
+    topic_id: UUID
 
 
 class TriggerResponse(BaseModel):
@@ -77,6 +100,8 @@ class RegisterSourceRequest(BaseModel):
     stable_id: str
     name: str
     normalized_domain: str
+    # Required once Source carries topic_id (T1). Full topics CRUD surface is T9.
+    topic_id: UUID
     feeds: list[RegisterFeedRequest] = []
 
 
@@ -99,8 +124,51 @@ class SourceResponse(BaseModel):
 
 
 class IngestUrlsRequest(BaseModel):
-    source_id: UUID
+    topic_id: UUID
     urls: list[str]
+
+
+class TopicCreateRequest(BaseModel):
+    name: str
+    description: str
+    interest_detail: str | None = None
+    keywords: list[str]
+
+
+class TopicUpdateRequest(BaseModel):
+    name: str
+    description: str
+    interest_detail: str | None
+    keywords: list[str]
+
+
+class TopicResponse(BaseModel):
+    id: UUID
+    name: str
+    description: str
+    interest_detail: str | None
+    keywords: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ClarifyRequest(BaseModel):
+    name: str
+    description: str
+
+
+class ClarifyResponse(BaseModel):
+    questions: list[str]
+
+
+class SuggestKeywordsRequest(BaseModel):
+    name: str
+    description: str
+    answers: list[str] = []
+
+
+class SuggestKeywordsResponse(BaseModel):
+    keywords: list[str]
 
 
 class IngestionResultResponse(BaseModel):
@@ -113,7 +181,7 @@ class IngestionResultResponse(BaseModel):
 
 class IngestionAttemptResponse(BaseModel):
     id: UUID
-    source_id: UUID
+    source_id: UUID | None
     source_feed_id: UUID | None
     requested_url: str
     canonical_url: str | None
@@ -129,10 +197,12 @@ class IngestionAttemptResponse(BaseModel):
 
 class TriggerDailyPipelineRequest(BaseModel):
     target_date: date
+    topic_id: UUID
 
 
 class DailyPipelineResultResponse(BaseModel):
     target_date: date
+    topic_id: UUID
     feeds_polled: int
     articles_succeeded: int
     articles_duplicate: int
@@ -150,10 +220,12 @@ class DailyPipelineResultResponse(BaseModel):
 
 class TriggerPeriodicPipelineRequest(BaseModel):
     target_date: date
+    topic_id: UUID
 
 
 class PeriodicPipelineResultResponse(BaseModel):
     cadence: str
+    topic_id: UUID
     covered_start: date
     covered_end: date
     summaries_selected: int
@@ -251,9 +323,22 @@ def _source_to_response(source: Source, feeds: list[SourceFeed]) -> SourceRespon
     )
 
 
+def _topic_to_response(topic: Topic) -> TopicResponse:
+    return TopicResponse(
+        id=topic.id,
+        name=topic.name,
+        description=topic.description,
+        interest_detail=topic.interest_detail,
+        keywords=list(topic.keywords),
+        created_at=topic.created_at,
+        updated_at=topic.updated_at,
+    )
+
+
 def _periodic_result_to_response(result: PeriodicPipelineResult) -> PeriodicPipelineResultResponse:
     return PeriodicPipelineResultResponse(
         cadence=result.cadence.value,
+        topic_id=result.topic_id,
         covered_start=result.covered_start,
         covered_end=result.covered_end,
         summaries_selected=result.summaries_selected,
@@ -335,18 +420,22 @@ def create_app(
         covered_start: date
         covered_end: date
         if req.cadence == "daily":
-            daily_result = await app.state.pipeline.run(req.covered_start)
+            daily_result = await app.state.pipeline.run(req.covered_start, topic_id=req.topic_id)
             run_id = daily_result.workflow_run_id
             status = daily_result.workflow_status.value if daily_result.workflow_status else None
             covered_start = covered_end = daily_result.target_date
         elif req.cadence == "weekly":
-            weekly_result = await app.state.weekly_pipeline.run(req.covered_start)
+            weekly_result = await app.state.weekly_pipeline.run(
+                req.covered_start, topic_id=req.topic_id
+            )
             run_id = weekly_result.workflow_run_id
             status = weekly_result.workflow_status.value if weekly_result.workflow_status else None
             covered_start = weekly_result.covered_start
             covered_end = weekly_result.covered_end
         elif req.cadence == "monthly":
-            monthly_result = await app.state.monthly_pipeline.run(req.covered_start)
+            monthly_result = await app.state.monthly_pipeline.run(
+                req.covered_start, topic_id=req.topic_id
+            )
             run_id = monthly_result.workflow_run_id
             status = (
                 monthly_result.workflow_status.value if monthly_result.workflow_status else None
@@ -357,11 +446,10 @@ def create_app(
             raise HTTPException(status_code=400, detail="unknown cadence")
         if run_id is None or status is None:
             raise HTTPException(status_code=409, detail="no content for the requested window")
-        # Mirrors WorkflowRunner._ensure_run's own key derivation - built from
-        # each pipeline's actual, normalized covered_start/covered_end (not
-        # the raw request), since weekly/monthly may not be Monday/month-
-        # aligned as submitted.
-        idempotency_key = f"{req.cadence}:{covered_start.isoformat()}:{covered_end.isoformat()}"
+        # Mirrors WorkflowRunner._ensure_run's own key derivation — includes topic_id.
+        idempotency_key = (
+            f"{req.cadence}:{req.topic_id}:{covered_start.isoformat()}:{covered_end.isoformat()}"
+        )
         return TriggerResponse(
             run_id=str(run_id),
             status=status,
@@ -390,6 +478,7 @@ def create_app(
             await upsert_source(
                 session,
                 Source(
+                    topic_id=req.topic_id,
                     stable_id=req.stable_id,
                     name=req.name,
                     normalized_domain=req.normalized_domain,
@@ -427,12 +516,161 @@ def create_app(
                 result.append(_source_to_response(source, feeds))
             return result
 
+    @app.post("/topics", response_model=TopicResponse)
+    async def create_topic_route(
+        req: TopicCreateRequest,
+        _key: str = Depends(_require_key),
+    ) -> TopicResponse:
+        now = datetime.now(UTC)
+        try:
+            topic = Topic(
+                id=uuid4(),
+                name=req.name,
+                description=req.description,
+                interest_detail=req.interest_detail,
+                keywords=req.keywords,
+                created_at=now,
+                updated_at=now,
+            )
+        except (ValueError, ValidationError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        runtime: RuntimeDependencies = app.state.runtime
+        async with session_scope(runtime.session_factory) as session:
+            persisted = await create_topic(session, topic)
+        return _topic_to_response(persisted)
+
+    @app.get("/topics", response_model=list[TopicResponse])
+    async def get_topics() -> list[TopicResponse]:
+        runtime: RuntimeDependencies = app.state.runtime
+        async with session_scope(runtime.session_factory) as session:
+            topics = await list_topics(session)
+        return [_topic_to_response(topic) for topic in topics]
+
+    # Stateless assist routes registered before /topics/{topic_id} so path
+    # segments are not parsed as UUIDs.
+    @app.post("/topics/clarify", response_model=ClarifyResponse)
+    async def clarify_topic(req: ClarifyRequest) -> ClarifyResponse:
+        runtime: RuntimeDependencies = app.state.runtime
+        try:
+            result, _usage = await runtime.gateway.generate(
+                task=ModelTask.TOPIC_ASSIST,
+                messages=build_clarify_messages(
+                    req.name,
+                    req.description,
+                    prompt_version=runtime.settings.topic_assist_prompt_version,
+                ),
+                output_schema=ClarifyingQuestions,
+                correlation_id=str(uuid4()),
+            )
+        except TerminalModelError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="topic assist unavailable: model call failed",
+            ) from exc
+        except RetryableModelError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="topic assist temporarily unavailable, try again",
+            ) from exc
+        questions = cast(ClarifyingQuestions, result)
+        return ClarifyResponse(questions=questions.questions)
+
+    @app.post("/topics/suggest-keywords", response_model=SuggestKeywordsResponse)
+    async def suggest_keywords(req: SuggestKeywordsRequest) -> SuggestKeywordsResponse:
+        runtime: RuntimeDependencies = app.state.runtime
+        try:
+            result, _usage = await runtime.gateway.generate(
+                task=ModelTask.TOPIC_ASSIST,
+                messages=build_keyword_suggestion_messages(
+                    req.name,
+                    req.description,
+                    req.answers,
+                    prompt_version=runtime.settings.topic_assist_prompt_version,
+                ),
+                output_schema=SuggestedKeywords,
+                correlation_id=str(uuid4()),
+            )
+        except TerminalModelError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="topic assist unavailable: model call failed",
+            ) from exc
+        except RetryableModelError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="topic assist temporarily unavailable, try again",
+            ) from exc
+        keywords = cast(SuggestedKeywords, result)
+        return SuggestKeywordsResponse(keywords=keywords.keywords)
+
+    @app.get("/topics/{topic_id}", response_model=TopicResponse)
+    async def get_topic_route(topic_id: UUID) -> TopicResponse:
+        runtime: RuntimeDependencies = app.state.runtime
+        async with session_scope(runtime.session_factory) as session:
+            topic = await get_topic(session, topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="topic not found")
+        return _topic_to_response(topic)
+
+    @app.put("/topics/{topic_id}", response_model=TopicResponse)
+    async def update_topic_route(
+        topic_id: UUID,
+        req: TopicUpdateRequest,
+        _key: str = Depends(_require_key),
+    ) -> TopicResponse:
+        try:
+            topic = Topic(
+                id=topic_id,
+                name=req.name,
+                description=req.description,
+                interest_detail=req.interest_detail,
+                keywords=req.keywords,
+            )
+        except (ValueError, ValidationError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        runtime: RuntimeDependencies = app.state.runtime
+        try:
+            async with session_scope(runtime.session_factory) as session:
+                persisted = await update_topic(session, topic)
+        except TopicNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="topic not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _topic_to_response(persisted)
+
+    @app.delete("/topics/{topic_id}", status_code=204)
+    async def delete_topic_route(
+        topic_id: UUID,
+        _key: str = Depends(_require_key),
+    ) -> None:
+        runtime: RuntimeDependencies = app.state.runtime
+        try:
+            async with session_scope(runtime.session_factory) as session:
+                await delete_topic(session, topic_id)
+        except TopicNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="topic not found") from exc
+        except TopicInUseError as exc:
+            raise HTTPException(status_code=409, detail="topic in use") from exc
+
+    @app.get("/topics/{topic_id}/sources", response_model=list[SourceResponse])
+    async def get_topic_sources(topic_id: UUID) -> list[SourceResponse]:
+        runtime: RuntimeDependencies = app.state.runtime
+        async with session_scope(runtime.session_factory) as session:
+            sources = await list_sources_for_topic(session, topic_id)
+            result: list[SourceResponse] = []
+            for source in sources:
+                feeds = await list_source_feeds_for_source(session, source.id)
+                result.append(_source_to_response(source, feeds))
+            return result
+
     @app.post("/ingestion/urls", response_model=list[IngestionResultResponse])
     async def ingest_urls(
         req: IngestUrlsRequest,
         _key: str = Depends(_require_key),
     ) -> list[IngestionResultResponse]:
-        results = await app.state.ingestion_service.ingest_urls(req.source_id, req.urls)
+        results = await app.state.ingestion_service.ingest_urls(req.topic_id, req.urls)
         return [
             IngestionResultResponse(
                 candidate_url=result.candidate_url,
@@ -446,13 +684,13 @@ def create_app(
 
     @app.post("/ingestion/files", response_model=IngestionResultResponse)
     async def ingest_file_route(
-        source_id: UUID = Form(...),
+        topic_id: UUID = Form(...),
         file: UploadFile = File(...),
         _key: str = Depends(_require_key),
     ) -> IngestionResultResponse:
         content = await file.read()
         result = await app.state.ingestion_service.ingest_file(
-            source_id, file.filename or "upload", content, file.content_type or ""
+            topic_id, file.filename or "upload", content, file.content_type or ""
         )
         return IngestionResultResponse(
             candidate_url=result.candidate_url,
@@ -502,9 +740,10 @@ def create_app(
         req: TriggerDailyPipelineRequest,
         _key: str = Depends(_require_key),
     ) -> DailyPipelineResultResponse:
-        result = await app.state.pipeline.run(req.target_date)
+        result = await app.state.pipeline.run(req.target_date, topic_id=req.topic_id)
         return DailyPipelineResultResponse(
             target_date=result.target_date,
+            topic_id=result.topic_id,
             feeds_polled=result.feeds_polled,
             articles_succeeded=result.articles_succeeded,
             articles_duplicate=result.articles_duplicate,
@@ -525,7 +764,7 @@ def create_app(
         req: TriggerPeriodicPipelineRequest,
         _key: str = Depends(_require_key),
     ) -> PeriodicPipelineResultResponse:
-        result = await app.state.weekly_pipeline.run(req.target_date)
+        result = await app.state.weekly_pipeline.run(req.target_date, topic_id=req.topic_id)
         return _periodic_result_to_response(result)
 
     @app.post("/pipelines/monthly", response_model=PeriodicPipelineResultResponse)
@@ -533,11 +772,14 @@ def create_app(
         req: TriggerPeriodicPipelineRequest,
         _key: str = Depends(_require_key),
     ) -> PeriodicPipelineResultResponse:
-        result = await app.state.monthly_pipeline.run(req.target_date)
+        result = await app.state.monthly_pipeline.run(req.target_date, topic_id=req.topic_id)
         return _periodic_result_to_response(result)
 
     @app.get("/briefs", response_model=list[BriefListItemResponse])
-    async def list_briefs(cadence: str = "daily") -> list[BriefListItemResponse]:
+    async def list_briefs(
+        cadence: str = "daily",
+        topic_id: UUID | None = None,
+    ) -> list[BriefListItemResponse]:
         try:
             parsed_cadence = Cadence(cadence)
         except ValueError as exc:
@@ -550,7 +792,10 @@ def create_app(
             # brief listing must include one generated earlier today, so push
             # the cutoff to tomorrow rather than excluding today's own brief.
             briefs = await list_prior_briefs(
-                session, parsed_cadence, before=date.today() + timedelta(days=1)
+                session,
+                parsed_cadence,
+                before=date.today() + timedelta(days=1),
+                topic_id=topic_id,
             )
 
         return [
@@ -578,7 +823,8 @@ def create_app(
             }
             articles = await get_articles_by_ids(session, list(article_ids))
             sources = await get_sources_by_ids(
-                session, list({article.source_id for article in articles})
+                session,
+                list({sid for article in articles if (sid := article.source_id) is not None}),
             )
 
         articles_by_id = {article.id: article for article in articles}
@@ -600,14 +846,18 @@ def create_app(
                         )
                     )
                     continue
-                source = sources_by_id.get(article.source_id)
+                source = (
+                    sources_by_id.get(article.source_id) if article.source_id is not None else None
+                )
                 resolved_citations.append(
                     ResolvedCitationResponse(
                         article_id=citation.article_id,
                         excerpt=citation.excerpt,
                         article_title=article.title,
                         article_url=article.url,
-                        source_name=source.name if source is not None else "",
+                        source_name=(
+                            source.name if source is not None else USER_PROVIDED_SOURCE_NAME
+                        ),
                     )
                 )
             cited_summaries.append(

@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from conftest import make_client
 from fastapi.testclient import TestClient
+from fixtures import DEFAULT_TOPIC_ID  # type: ignore[import-not-found]
 
 from analyst_engine.api.app import create_app
 from analyst_engine.api.readiness import ComponentStatus, ReadinessStatus
@@ -121,6 +122,7 @@ def test_trigger_daily_delegates_to_pipeline_not_runner_directly(monkeypatch) ->
         workflow_run_id=uuid4(),
         workflow_status=WorkflowStatus.SUCCEEDED,
         brief_id=None,
+        topic_id=DEFAULT_TOPIC_ID,
     )
     pipeline = Mock(run=AsyncMock(return_value=result))
     client = make_client(monkeypatch, allow_unauthenticated_write=True, pipeline=pipeline)
@@ -131,6 +133,7 @@ def test_trigger_daily_delegates_to_pipeline_not_runner_directly(monkeypatch) ->
             "cadence": "daily",
             "covered_start": "2026-07-12",
             "covered_end": "2026-07-12",
+            "topic_id": str(DEFAULT_TOPIC_ID),
         },
     )
 
@@ -138,8 +141,8 @@ def test_trigger_daily_delegates_to_pipeline_not_runner_directly(monkeypatch) ->
     body = response.json()
     assert body["run_id"] == str(result.workflow_run_id)
     assert body["status"] == "succeeded"
-    assert body["idempotency_key"] == "daily:2026-07-12:2026-07-12"
-    pipeline.run.assert_awaited_once_with(date(2026, 7, 12))
+    assert body["idempotency_key"] == f"daily:{DEFAULT_TOPIC_ID}:2026-07-12:2026-07-12"
+    pipeline.run.assert_awaited_once_with(date(2026, 7, 12), topic_id=DEFAULT_TOPIC_ID)
 
 
 def test_trigger_weekly_delegates_to_weekly_pipeline_with_normalized_window(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -152,6 +155,7 @@ def test_trigger_weekly_delegates_to_weekly_pipeline_with_normalized_window(monk
         workflow_run_id=uuid4(),
         workflow_status=WorkflowStatus.SUCCEEDED,
         brief_id=None,
+        topic_id=DEFAULT_TOPIC_ID,
     )
     weekly_pipeline = Mock(run=AsyncMock(return_value=result))
     client = make_client(
@@ -164,6 +168,7 @@ def test_trigger_weekly_delegates_to_weekly_pipeline_with_normalized_window(monk
             "cadence": "weekly",
             "covered_start": "2026-07-08",
             "covered_end": "2026-07-08",
+            "topic_id": str(DEFAULT_TOPIC_ID),
         },
     )
 
@@ -172,8 +177,8 @@ def test_trigger_weekly_delegates_to_weekly_pipeline_with_normalized_window(monk
     assert body["run_id"] == str(result.workflow_run_id)
     # The idempotency key reflects the pipeline's own normalized window
     # (Mon-Sun), not the raw covered_start submitted in the request.
-    assert body["idempotency_key"] == "weekly:2026-07-06:2026-07-12"
-    weekly_pipeline.run.assert_awaited_once_with(date(2026, 7, 8))
+    assert body["idempotency_key"] == f"weekly:{DEFAULT_TOPIC_ID}:2026-07-06:2026-07-12"
+    weekly_pipeline.run.assert_awaited_once_with(date(2026, 7, 8), topic_id=DEFAULT_TOPIC_ID)
 
 
 def test_trigger_returns_409_when_monthly_pipeline_reports_no_content(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -186,6 +191,7 @@ def test_trigger_returns_409_when_monthly_pipeline_reports_no_content(monkeypatc
         workflow_run_id=None,
         workflow_status=None,
         brief_id=None,
+        topic_id=DEFAULT_TOPIC_ID,
     )
     monthly_pipeline = Mock(run=AsyncMock(return_value=result))
     client = make_client(
@@ -198,6 +204,7 @@ def test_trigger_returns_409_when_monthly_pipeline_reports_no_content(monkeypatc
             "cadence": "monthly",
             "covered_start": "2026-07-15",
             "covered_end": "2026-07-15",
+            "topic_id": str(DEFAULT_TOPIC_ID),
         },
     )
 
@@ -223,6 +230,7 @@ def test_trigger_returns_409_when_daily_pipeline_reports_no_content(monkeypatch)
         workflow_run_id=None,
         workflow_status=None,
         brief_id=None,
+        topic_id=DEFAULT_TOPIC_ID,
     )
     pipeline = Mock(run=AsyncMock(return_value=result))
     client = make_client(monkeypatch, allow_unauthenticated_write=True, pipeline=pipeline)
@@ -233,6 +241,7 @@ def test_trigger_returns_409_when_daily_pipeline_reports_no_content(monkeypatch)
             "cadence": "daily",
             "covered_start": "2026-07-12",
             "covered_end": "2026-07-12",
+            "topic_id": str(DEFAULT_TOPIC_ID),
         },
     )
 
@@ -257,6 +266,7 @@ def test_trigger_rejects_unknown_cadence_before_pipeline_invocation(monkeypatch)
             "cadence": "quarterly",
             "covered_start": "2026-07-12",
             "covered_end": "2026-09-30",
+            "topic_id": str(DEFAULT_TOPIC_ID),
         },
     )
 

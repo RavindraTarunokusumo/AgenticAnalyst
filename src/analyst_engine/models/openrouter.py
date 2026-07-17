@@ -31,6 +31,7 @@ class OpenRouterAdapter(ModelGateway):
         )
         self._model_map = {
             ModelTask.BATCH_SUMMARY: settings.openrouter_batch_summary_model,
+            ModelTask.TOPIC_ASSIST: settings.openrouter_batch_summary_model,
             ModelTask.FRONTIER_DAILY: settings.openrouter_frontier_model,
             ModelTask.FRONTIER_WEEKLY: settings.openrouter_frontier_model,
             ModelTask.FRONTIER_MONTHLY: settings.openrouter_frontier_model,
