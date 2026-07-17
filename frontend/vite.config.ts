@@ -16,6 +16,7 @@ export default defineConfig({
       '/briefs': 'http://localhost:8000',
       '/sources': 'http://localhost:8000',
       '/ingestion': 'http://localhost:8000',
+      '/topics': 'http://localhost:8000',
     },
   },
 })
