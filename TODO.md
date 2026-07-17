@@ -148,13 +148,13 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
       - [x] Degrade: clarify/suggest 503 must not block; user can proceed and
             enter keywords manually; create blocked only if keywords empty (`2588694`)
       - [x] Additive only (App swap + old Onboarding delete are T13) (`2588694`)
-- [ ] **T12** Topic settings — edit sources (R6), re-suggest keywords (R8)
-      - [ ] `TopicSettings.tsx`: list topic sources (`fetchTopicSources`), add a
-            source+feed under the topic (`registerSource` w/ topic_id) — R6
-      - [ ] Re-suggest keywords against retained `interest_detail`
+- [x] **T12** Topic settings — edit sources (R6), re-suggest keywords (R8) (`d1adc7f`)
+      - [x] `TopicSettings.tsx`: list topic sources (`fetchTopicSources`), add a
+            source+feed under the topic (`registerSource` w/ topic_id) — R6 (`d1adc7f`)
+      - [x] Re-suggest keywords against retained `interest_detail`
             (`suggestKeywords`) → editable `KeywordChips` → save via
-            `updateTopic` — R8
-      - [ ] Additive only (App wires it in T13)
+            `updateTopic` — R8 (`d1adc7f`)
+      - [x] Additive only (App wires it in T13) (`d1adc7f`)
 - [ ] **T13** `App.tsx` wiring + topic selection (add dev-proxy prefixes)
 - [ ] **T14** Docs — architecture, database, changelog
 
