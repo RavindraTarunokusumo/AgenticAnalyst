@@ -166,7 +166,7 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
       - [x] Build green end-to-end; drove real endpoints (topic CRUD, source
             w/ topic_id, ingest, brief filter, 422/409/404) against live
             Postgres — contract verified (`ca7532c`)
-- [ ] **T14** Docs — architecture, database, changelog
+- [x] **T14** Docs — architecture, database, changelog (`f36e539`)
 
 ## Future Backlog
 
