@@ -60,6 +60,21 @@ def test_get_briefs_defaults_to_daily_and_uses_tomorrow_cutoff(monkeypatch) -> N
     assert list_prior_briefs.await_args is not None
     assert list_prior_briefs.await_args.args[1] == Cadence.DAILY
     assert list_prior_briefs.await_args.kwargs["before"] == date.today() + timedelta(days=1)
+    assert list_prior_briefs.await_args.kwargs["topic_id"] is None
+
+
+def test_get_briefs_forwards_topic_id_filter(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    list_prior_briefs = AsyncMock(return_value=[])
+    monkeypatch.setattr("analyst_engine.api.app.list_prior_briefs", list_prior_briefs)
+
+    client = make_client(monkeypatch)
+    response = client.get("/briefs", params={"topic_id": str(DEFAULT_TOPIC_ID)})
+
+    assert response.status_code == 200
+    assert response.json() == []
+    list_prior_briefs.assert_awaited_once()
+    assert list_prior_briefs.await_args is not None
+    assert list_prior_briefs.await_args.kwargs["topic_id"] == DEFAULT_TOPIC_ID
 
 
 def test_get_briefs_passes_weekly_cadence(monkeypatch) -> None:  # type: ignore[no-untyped-def]

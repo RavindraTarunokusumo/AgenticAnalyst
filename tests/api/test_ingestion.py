@@ -46,7 +46,7 @@ def test_post_ingestion_urls_requires_auth_and_maps_results(monkeypatch) -> None
 
     unauthenticated = client.post(
         "/ingestion/urls",
-        json={"source_id": str(_SOURCE_ID), "urls": ["https://example.com/story"]},
+        json={"topic_id": str(DEFAULT_TOPIC_ID), "urls": ["https://example.com/story"]},
     )
     assert unauthenticated.status_code == 401
     assert unauthenticated.json() == {"detail": "API key required"}
@@ -56,7 +56,7 @@ def test_post_ingestion_urls_requires_auth_and_maps_results(monkeypatch) -> None
         "/ingestion/urls",
         headers={"X-API-Key": "test-secret"},
         json={
-            "source_id": str(_SOURCE_ID),
+            "topic_id": str(DEFAULT_TOPIC_ID),
             "urls": ["https://example.com/story", "https://example.com/broken"],
         },
     )
@@ -79,7 +79,7 @@ def test_post_ingestion_urls_requires_auth_and_maps_results(monkeypatch) -> None
         "error_summary": "timeout",
     }
     ingestion_service.ingest_urls.assert_awaited_once_with(
-        _SOURCE_ID,
+        DEFAULT_TOPIC_ID,
         ["https://example.com/story", "https://example.com/broken"],
     )
 
@@ -104,7 +104,7 @@ def test_post_ingestion_files_requires_auth_and_maps_result(monkeypatch) -> None
 
     unauthenticated = client.post(
         "/ingestion/files",
-        data={"source_id": str(_SOURCE_ID)},
+        data={"topic_id": str(DEFAULT_TOPIC_ID)},
         files={"file": ("report.pdf", b"pdf bytes", "application/pdf")},
     )
     assert unauthenticated.status_code == 401
@@ -113,7 +113,7 @@ def test_post_ingestion_files_requires_auth_and_maps_result(monkeypatch) -> None
     authenticated = client.post(
         "/ingestion/files",
         headers={"X-API-Key": "test-secret"},
-        data={"source_id": str(_SOURCE_ID)},
+        data={"topic_id": str(DEFAULT_TOPIC_ID)},
         files={"file": ("report.pdf", b"pdf bytes", "application/pdf")},
     )
 
@@ -126,7 +126,7 @@ def test_post_ingestion_files_requires_auth_and_maps_result(monkeypatch) -> None
         "error_summary": None,
     }
     ingestion_service.ingest_file.assert_awaited_once_with(
-        _SOURCE_ID, "report.pdf", b"pdf bytes", "application/pdf"
+        DEFAULT_TOPIC_ID, "report.pdf", b"pdf bytes", "application/pdf"
     )
 
 
@@ -153,7 +153,7 @@ def test_post_ingestion_files_maps_oversized_upload_failure_from_service(monkeyp
 
     response = client.post(
         "/ingestion/files",
-        data={"source_id": str(_SOURCE_ID)},
+        data={"topic_id": str(DEFAULT_TOPIC_ID)},
         files={"file": ("report.pdf", b"way more than four bytes", "application/pdf")},
     )
 
@@ -162,7 +162,7 @@ def test_post_ingestion_files_maps_oversized_upload_failure_from_service(monkeyp
     assert body["status"] == "failed"
     assert body["error_code"] == "file_too_large"
     ingestion_service.ingest_file.assert_awaited_once_with(
-        _SOURCE_ID, "report.pdf", b"way more than four bytes", "application/pdf"
+        DEFAULT_TOPIC_ID, "report.pdf", b"way more than four bytes", "application/pdf"
     )
 
 
