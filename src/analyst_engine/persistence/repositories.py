@@ -692,14 +692,22 @@ async def claim_pending_workflow_run(session: AsyncSession, run: WorkflowRun) ->
 
 
 async def get_narrative_version_as_of(
-    session: AsyncSession, before: date
+    session: AsyncSession, before: date, *, topic_id: uuid.UUID
 ) -> NarrativeStateVersion | None:
-    """Load the narrative attached to the latest brief strictly before a run."""
+    """Load the narrative attached to the latest brief for a topic before a run.
+
+    Scoped to the topic (via ``ORMBrief.topic_id``); an unscoped load would let
+    a topic inherit whichever topic briefed most recently, the same
+    cross-topic leak the T6 poll-scoping fix closed for article selection. The
+    narrative is reachable per-topic through the brief that references it, so no
+    ``topic_id`` column on ``narrative_state_version`` is needed.
+    """
 
     narrative_id = (
         await session.execute(
             select(ORMBrief.narrative_state_version_id)
             .where(
+                ORMBrief.topic_id == topic_id,
                 ORMBrief.covered_end < before,
                 ORMBrief.narrative_state_version_id.is_not(None),
             )

@@ -105,7 +105,7 @@ class WorkflowRunner:
         }[cadence]
         async with session_scope(self.session_factory) as session:
             return (
-                await get_narrative_version_as_of(session, start),
+                await get_narrative_version_as_of(session, start, topic_id=topic_id),
                 await list_prior_briefs(session, prior_cadence, start, topic_id=topic_id),
             )
 
