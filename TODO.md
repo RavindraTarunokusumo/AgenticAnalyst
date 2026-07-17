@@ -98,6 +98,17 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
             (`7758fac`)
 - [ ] **T8** `ModelTask.TOPIC_ASSIST` + `topics/prompts.py`
       (R7a: no hard-coded domain vocabulary)
+      - [ ] `ModelTask.TOPIC_ASSIST` in gateway; map in **both** dashscope and
+            openrouter task maps (openrouter `_model_map[task]` KeyErrors if
+            unmapped — it is a chat task, so map, don't raise like EMBED)
+      - [ ] config: `topic_assist_model`, `topic_assist_prompt_version`
+      - [ ] `topics/prompts.py`: `build_clarify_messages`,
+            `build_keyword_suggestion_messages` + output pydantic schemas,
+            mirroring `summarization/prompts.py` conventions
+      - [ ] R7a: prompt strings derive questions from the user's description,
+            zero hard-coded domain vocabulary; in-prompt examples span unlike
+            domains — **senior reads literal strings + tests 3 unlike subjects**
+      - [ ] Unit tests: builders interpolate description; schemas validate
 - [ ] **T9** API — topics CRUD, `/topics/clarify`, `/topics/suggest-keywords`,
       `topic_id` on ingestion routes, brief topic filter
 - [ ] **T10** `api.ts` topic types + wrappers
