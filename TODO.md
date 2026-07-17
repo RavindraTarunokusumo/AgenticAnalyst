@@ -155,15 +155,17 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
             (`suggestKeywords`) → editable `KeywordChips` → save via
             `updateTopic` — R8 (`d1adc7f`)
       - [x] Additive only (App wires it in T13) (`d1adc7f`)
-- [ ] **T13** `App.tsx` wiring + topic selection (add dev-proxy prefixes)
-      - [ ] App gates on topics (not sources): 0 topics → `TopicOnboarding`;
-            topic selector; briefs filtered by selected topic
-      - [ ] Wire `TopicSettings` for the selected topic; delete old
-            `Onboarding.tsx`
-      - [ ] Refactor `AddContentPanel`: `source`→`topicId` prop; links+file
+- [x] **T13** `App.tsx` wiring + topic selection (`ca7532c`)
+      - [x] App gates on topics (not sources): 0 topics → `TopicOnboarding`;
+            topic selector; briefs filtered by selected topic (`ca7532c`)
+      - [x] Wire `TopicSettings` for the selected topic; delete old
+            `Onboarding.tsx` (`ca7532c`)
+      - [x] Refactor `AddContentPanel`: `source`→`topicId` prop; links+file
             article-pool adds via `ingestUrls`/`ingestFile(topicId)`; feed/source
-            add now lives in `TopicSettings`
-      - [ ] Build green end-to-end; drive the flow against a running backend
+            add now lives in `TopicSettings` (`ca7532c`)
+      - [x] Build green end-to-end; drove real endpoints (topic CRUD, source
+            w/ topic_id, ingest, brief filter, 422/409/404) against live
+            Postgres — contract verified (`ca7532c`)
 - [ ] **T14** Docs — architecture, database, changelog
 
 ## Future Backlog
