@@ -68,8 +68,9 @@ Summary:
   ceiling; `cleaned_content` before persist — precision), via a pure
   deterministic matcher (`topics/matcher.py`, no embeddings); rejected
   candidates still record an observable `not_relevant` attempt. Pipelines,
-  the scheduler, and article/feed selection are all per-topic (`list_due_source_feeds`
-  and `list_eligible_unbatched_articles` gained `topic_id`; the brief unique
+  the scheduler, article/feed selection, and narrative-memory loading are all
+  per-topic (`list_due_source_feeds`, `list_eligible_unbatched_articles`, and
+  `get_narrative_version_as_of` gained `topic_id`; the brief unique
   index is now `(topic_id, cadence, covered_start, covered_end)`). New
   `TOPIC_ASSIST` gateway task + domain-general clarify/keyword-suggestion prompts
   (`topics/prompts.py`, R7a — no hard-coded domain vocabulary). API gained topics

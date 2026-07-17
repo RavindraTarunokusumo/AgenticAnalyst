@@ -166,7 +166,26 @@ keyword-filtered before any model call, and briefs are per-topic. Auto Search
       - [x] Build green end-to-end; drove real endpoints (topic CRUD, source
             w/ topic_id, ingest, brief filter, 422/409/404) against live
             Postgres — contract verified (`ca7532c`)
-- [x] **T14** Docs — architecture, database, changelog (`f36e539`)
+- [x] **T14** Docs — architecture, database, changelog
+
+#### Code review fixes (PR #9, Grok bundled review — Rule 2)
+
+- [x] **R1** (`e4122f3`) `IngestionAttemptResponse.source_id` / TS `IngestionAttempt.source_id`
+      made nullable — a source-less direct add (spec §3.2) otherwise 500s the
+      whole `GET /ingestion/attempts` listing on response validation. Route-level
+      regression test added (T5b only covered the repository round-trip).
+- [x] **R2** (`0a88822`) Narrative load topic-scoping — `get_narrative_version_as_of` was
+      global while prior briefs are topic-scoped (T6), so a topic inherited
+      whichever topic last briefed. No migration: the narrative is reachable
+      per-topic through `ORMBrief.topic_id` (already present); add a `topic_id`
+      param + WHERE and thread it through `runner.load_context`. Same bug class
+      as the T6 poll-starvation fix.
+- Deferred to a follow-up slice (reported to user): composite-uniqueness so two
+  topics can share a source/URL — `(topic_id, stable_id)` on source,
+  `(topic_id, url_fingerprint)` on article, `(topic_id, feed_url_fingerprint)`
+  on source_feed. Needs a migration; safe to defer for a distinct-sources-per-
+  topic demo. (Also deferred: delete blocked by `not_relevant` attempts — a
+  deliberate ON DELETE RESTRICT UX nit.) (`f36e539`)
 
 ## Future Backlog
 
