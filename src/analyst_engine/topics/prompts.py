@@ -63,11 +63,7 @@ def build_clarify_messages(
         "Return JSON matching the ClarifyingQuestions schema with a questions list "
         f"of strings. prompt_version: {prompt_version}"
     )
-    user_content = (
-        f"Topic name: {name}\n"
-        f"Topic description: {description}\n\n"
-        f"{output_contract}"
-    )
+    user_content = f"Topic name: {name}\nTopic description: {description}\n\n{output_contract}"
     return [
         {"role": "system", "content": _CLARIFY_SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
@@ -82,9 +78,7 @@ def build_keyword_suggestion_messages(
     prompt_version: str,
 ) -> list[dict[str, str]]:
     """Build gateway messages for topic keyword suggestion generation."""
-    answers_block = (
-        "\n".join(f"- {answer}" for answer in answers) if answers else "(none provided)"
-    )
+    answers_block = "\n".join(f"- {answer}" for answer in answers) if answers else "(none provided)"
     output_contract = (
         "Return JSON matching the SuggestedKeywords schema with a keywords list "
         f"of strings. prompt_version: {prompt_version}"

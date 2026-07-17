@@ -36,9 +36,10 @@ def test_clarify_returns_questions(monkeypatch) -> None:  # type: ignore[no-unty
     assert kwargs["output_schema"] is ClarifyingQuestions
     assert kwargs["messages"][0]["role"] == "system"
     assert "US-Iran" in kwargs["messages"][1]["content"]
-    assert f"prompt_version: {runtime.settings.topic_assist_prompt_version}" in kwargs[
-        "messages"
-    ][1]["content"]
+    assert (
+        f"prompt_version: {runtime.settings.topic_assist_prompt_version}"
+        in kwargs["messages"][1]["content"]
+    )
 
 
 def test_clarify_returns_503_on_terminal_model_error(monkeypatch) -> None:  # type: ignore[no-untyped-def]

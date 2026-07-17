@@ -40,9 +40,7 @@ async def register_schedules(
             try:
                 await pipeline.run(date.today(), topic_id=topic.id)
             except Exception:
-                logger.exception(
-                    "daily pipeline failed for topic_id=%s", topic.id
-                )
+                logger.exception("daily pipeline failed for topic_id=%s", topic.id)
 
     async def _run_weekly_pipeline() -> None:
         # CronTrigger fires on local time; passing local date.today() (rather
@@ -56,9 +54,7 @@ async def register_schedules(
             try:
                 await weekly_pipeline.run(date.today(), topic_id=topic.id)
             except Exception:
-                logger.exception(
-                    "weekly pipeline failed for topic_id=%s", topic.id
-                )
+                logger.exception("weekly pipeline failed for topic_id=%s", topic.id)
 
     async def _run_monthly_pipeline() -> None:
         async with session_scope(session_factory) as session:
@@ -67,9 +63,7 @@ async def register_schedules(
             try:
                 await monthly_pipeline.run(date.today(), topic_id=topic.id)
             except Exception:
-                logger.exception(
-                    "monthly pipeline failed for topic_id=%s", topic.id
-                )
+                logger.exception("monthly pipeline failed for topic_id=%s", topic.id)
 
     # Daily at 02:00 local
     scheduler.add_job(
