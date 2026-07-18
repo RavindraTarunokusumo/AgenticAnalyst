@@ -11,6 +11,35 @@ Record reusable lessons from completed sessions.
 - Workflow improvement:
 - Skill worth adding or updating:
 
+## 2026-07-18 — Multi-Topic Source Sharing / Composite Uniqueness (codex/multi-topic-sources, PR #10)
+
+- What worked:
+  - One tightly-scoped Grok implementation handoff (schema + repository + caller ripple + test) with the cross-task contract fully specified in the plan (the five changed signatures + every call site named) let the implementer land a correct, complete diff in one pass. Verifying the migration's `drop_constraint` names against the *live* DB (`docker exec <pg> psql -tAc "SELECT conname FROM pg_constraint WHERE contype='u' ..."`) before writing the migration removed the single biggest runtime-failure risk (guessed constraint names).
+  - The advisor's pre-work checks were exactly the ones that bite: the `scalar_one_or_none()` → `MultipleResultsFound` 500 once two rows legitimately share an identifier, and the "acceptance test must reuse the *identical* identifier across two topics or it proves nothing" discriminator. Both went straight into the Grok prompt.
+
+- What failed:
+  - **Grok's scoped self-report was green while the full gate was red — again, and this is the load-bearing lesson.** The prompt explicitly told Grok to run the full `pytest`; it ran only the one integration file it was pointed at and reported "3 passed." The senior full run found **17 failures + 8 errors**: unit-test monkeypatch fakes for the changed function (`get_article_by_fingerprint`) still had the old signature (missing the new `*, topic_id` kwarg), and `test_readiness_checks.py` hard-codes the migration-head revision, which every new migration invalidates. **A repository signature change or a new migration has a predictable blast radius (mock fakes + hardcoded head constants) the scoped implementer structurally cannot see.** Never trust the implementer's suite claim; the senior's own full run is the gate (Rule 10).
+  - **Coverage instrumentation made the full integration suite both flaky and 4× slower.** With coverage the run was 185s and threw 8 spurious `testcontainers` ERRORS (session-scoped Postgres containers contending under Docker pressure); the same suite with `--no-cov` was 47s and clean (347 passed). The errors were an environment artifact, not a code regression (the file passed standalone and as-a-file — Rule 6).
+  - `gh pr merge` was blocked by the auto-mode classifier (same class as reading `/proc/<pid>/environ` last session). Outward git actions have to be handed to the user.
+  - A repo-wide mechanical rename (`sed s/Old/New/g`) was tangled with pre-existing uncommitted WIP in `AGENTS.md`/`CLAUDE.md` (154 non-rename lines each) and with built `static/` artifacts. Committing "the rename" cleanly required classifying every modified file as pure-rename vs entangled first, then specific-staging only the 25 pure-rename files.
+
+- Useful commands:
+  - `docker exec <pg-container> psql -U <u> -d <db> -tAc "SELECT conrelid::regclass||' '||conname FROM pg_constraint WHERE contype='u' AND conrelid IN ('t1'::regclass,...);"` — read real constraint names before writing an Alembic `drop_constraint` (never guess the `_key` autogen name).
+  - `uv run pytest -q --no-cov` — the authoritative full gate; coverage adds testcontainer flakiness and 4× time. Run coverage separately if needed.
+  - Per-file rename classification: `for f in $(git diff --name-only); do git diff -- "$f" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | grep -vi 'OldName\|NewName' | grep -q . && echo "ENTANGLED $f" || echo "pure $f"; done`
+  - Path-limited stash to set aside specific dirty files without touching `.worktree/`: `git stash push -u -- <paths>`; then `git pull --rebase` replays a local-only commit onto the merged remote with linear history.
+
+- Scripts created: none (Grok prompts + PR body written to the scratchpad via the Write tool).
+
+- Workflow improvement:
+  - Treat "the implementer ran the tests" as no signal at all: the handoff prompt should still ask for it, but the orchestrator's own `pytest -q --no-cov` (full) is the only gate that counts, and it must run before every commit — especially for signature/migration changes, whose ripple (mock fakes, hardcoded migration-head constants) is invisible to a scoped run.
+  - A new worktree does not share the root `.venv`; `uv sync` in the worktree is a required setup step before any gate or Grok handoff runs there.
+  - Before any bulk mechanical edit (repo-wide rename/codemod), check for pre-existing uncommitted changes and classify per-file so the mechanical change lands as its own clean commit and does not bury the user's WIP.
+  - Prefer the Write tool over shell heredocs for creating prompt/PR-body files — heredoc redirects into the scratchpad path failed intermittently this session while Write to the same path was reliable.
+
+- Skill worth adding or updating:
+  - The Grok Build handoff already says "run the full suite"; reality is the implementer won't reliably do it. The doc should stop implying the implementer's self-check substitutes for anything and state plainly that the senior's full `--no-cov` run is the gate. Add: for schema changes, always DB-verify constraint names and always update the readiness migration-head constant.
+
 ## 2026-07-17 — Topic-First Analyst, Slice 1 (codex/topic-first-analyst, PR #9)
 
 - What worked:
