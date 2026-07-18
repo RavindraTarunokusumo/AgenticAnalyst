@@ -30,7 +30,9 @@ from analyst_engine.models.gateway import ModelGateway, ModelTask, ModelUsage
 from analyst_engine.persistence.engine import get_async_engine, get_session_factory, session_scope
 from analyst_engine.persistence.repositories import (
     create_topic,
+    get_article_by_fingerprint,
     get_brief_by_cadence_interval,
+    get_source_by_stable_id,
     get_source_feed_by_fingerprint,
     list_due_source_feeds,
     save_article,
@@ -418,8 +420,12 @@ async def test_topic_run_does_not_consume_other_topic_feed_due_status(
     assert recorder.polled_feed_ids == [feed_a.id]
 
     async with session_scope(migrated) as session:
-        persisted_a = await get_source_feed_by_fingerprint(session, "feed-fp-topic-a")
-        persisted_b = await get_source_feed_by_fingerprint(session, "feed-fp-topic-b")
+        persisted_a = await get_source_feed_by_fingerprint(
+            session, "feed-fp-topic-a", source_id=source_a.id
+        )
+        persisted_b = await get_source_feed_by_fingerprint(
+            session, "feed-fp-topic-b", source_id=source_b.id
+        )
         assert persisted_a is not None and persisted_b is not None
         assert persisted_a.last_polled_at == _FIXED_NOW
         # B's feed must still be due — A must not have stamped it.
@@ -432,10 +438,97 @@ async def test_topic_run_does_not_consume_other_topic_feed_due_status(
     assert recorder.polled_feed_ids == [feed_a.id, feed_b.id]
 
     async with session_scope(migrated) as session:
-        persisted_b = await get_source_feed_by_fingerprint(session, "feed-fp-topic-b")
+        persisted_b = await get_source_feed_by_fingerprint(
+            session, "feed-fp-topic-b", source_id=source_b.id
+        )
         assert persisted_b is not None
         assert persisted_b.last_polled_at == _FIXED_NOW
         # After B runs, B's feed is no longer due within the interval.
         not_yet = _FIXED_NOW + timedelta(minutes=30)
         due_b_later = await list_due_source_feeds(session, not_yet, topic_id=topic_b.id)
         assert due_b_later == []
+
+
+@pytest.mark.asyncio
+async def test_same_stable_id_and_url_fingerprint_allowed_across_topics(
+    migrated: async_sessionmaker[AsyncSession],
+) -> None:
+    """Discriminating acceptance: identical identifiers under two topics (spec §6).
+
+    Reuses the *same* stable_id and url_fingerprint across topics — a test with
+    distinct per-topic identifiers would pass both before and after the fix.
+    """
+    shared_stable_id = "shared-source-stable-id"
+    shared_fingerprint = "shared-url-fingerprint"
+
+    topic_a = Topic(
+        id=uuid4(),
+        name="Share Topic A",
+        description="A",
+        keywords=["share-a"],
+    )
+    topic_b = Topic(
+        id=uuid4(),
+        name="Share Topic B",
+        description="B",
+        keywords=["share-b"],
+    )
+    source_a = Source(
+        topic_id=topic_a.id,
+        stable_id=shared_stable_id,
+        name="Shared Source A",
+        normalized_domain="shared.example.com",
+    )
+    source_b = Source(
+        topic_id=topic_b.id,
+        stable_id=shared_stable_id,
+        name="Shared Source B",
+        normalized_domain="shared.example.com",
+    )
+    published_at = datetime.combine(_TARGET_DATE, datetime.min.time(), tzinfo=UTC)
+    article_a = Article(
+        topic_id=topic_a.id,
+        source_id=source_a.id,
+        url="https://shared.example.com/story",
+        url_fingerprint=shared_fingerprint,
+        title="Shared Story A",
+        published_at=published_at,
+        language="en",
+        cleaned_content=_SHARED_EXCERPT,
+    )
+    article_b = Article(
+        topic_id=topic_b.id,
+        source_id=source_b.id,
+        url="https://shared.example.com/story",
+        url_fingerprint=shared_fingerprint,
+        title="Shared Story B",
+        published_at=published_at,
+        language="en",
+        cleaned_content=_SHARED_EXCERPT,
+    )
+
+    async with session_scope(migrated) as session:
+        await create_topic(session, topic_a)
+        await create_topic(session, topic_b)
+        await upsert_source(session, source_a)
+        await upsert_source(session, source_b)
+        await save_article(session, article_a)
+        await save_article(session, article_b)
+
+        got_a = await get_source_by_stable_id(session, shared_stable_id, topic_id=topic_a.id)
+        got_b = await get_source_by_stable_id(session, shared_stable_id, topic_id=topic_b.id)
+        assert got_a is not None and got_b is not None
+        assert got_a.id == source_a.id
+        assert got_b.id == source_b.id
+        assert got_a.id != got_b.id
+        assert got_a.topic_id == topic_a.id
+        assert got_b.topic_id == topic_b.id
+
+        art_a = await get_article_by_fingerprint(session, shared_fingerprint, topic_id=topic_a.id)
+        art_b = await get_article_by_fingerprint(session, shared_fingerprint, topic_id=topic_b.id)
+        assert art_a is not None and art_b is not None
+        assert art_a.id == article_a.id
+        assert art_b.id == article_b.id
+        assert art_a.id != art_b.id
+        assert art_a.topic_id == topic_a.id
+        assert art_b.topic_id == topic_b.id

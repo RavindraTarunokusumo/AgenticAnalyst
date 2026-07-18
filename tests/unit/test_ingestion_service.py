@@ -199,7 +199,9 @@ class _ServiceHarness:
             self.upserted_feeds.append(feed)
             return feed
 
-        async def fake_get_article(_session: object, fingerprint: str) -> Article | None:
+        async def fake_get_article(
+            _session: object, fingerprint: str, *, topic_id: UUID
+        ) -> Article | None:
             return self.fingerprint_articles.get(fingerprint)
 
         async def fake_save_article(_session: object, article: Article) -> Article:
@@ -648,7 +650,9 @@ async def test_ingest_urls_duplicate_short_circuits_before_extraction(
         published_at=datetime(2026, 7, 10, tzinfo=UTC),
     )
 
-    async def fake_get_article(_session: object, fingerprint: str) -> Article | None:
+    async def fake_get_article(
+        _session: object, fingerprint: str, *, topic_id: UUID
+    ) -> Article | None:
         return Article(
             id=existing_id,
             topic_id=_TOPIC_ID,

@@ -448,7 +448,7 @@ class IngestionService:
         topic_id: UUID,
     ) -> IngestionResult | None:
         async with session_scope(self._session_factory) as session:
-            existing = await get_article_by_fingerprint(session, fingerprint)
+            existing = await get_article_by_fingerprint(session, fingerprint, topic_id=topic_id)
         if existing is None:
             return None
         return await self._record_duplicate(
@@ -550,7 +550,7 @@ class IngestionService:
                 await record_ingestion_attempt(session, attempt)
         except IntegrityError:
             async with session_scope(self._session_factory) as session:
-                winner = await get_article_by_fingerprint(session, fingerprint)
+                winner = await get_article_by_fingerprint(session, fingerprint, topic_id=topic_id)
                 winner_id = winner.id if winner is not None else None
                 attempt = IngestionAttempt(
                     topic_id=topic_id,

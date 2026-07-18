@@ -484,7 +484,7 @@ def create_app(
                     normalized_domain=req.normalized_domain,
                 ),
             )
-            persisted = await get_source_by_stable_id(session, req.stable_id)
+            persisted = await get_source_by_stable_id(session, req.stable_id, topic_id=req.topic_id)
             if persisted is None:
                 raise HTTPException(status_code=500, detail="source persistence failed")
 
