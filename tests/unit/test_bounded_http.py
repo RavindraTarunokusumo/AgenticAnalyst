@@ -18,7 +18,7 @@ from analyst_engine.ingestion.bounded_http import (
 )
 from analyst_engine.ingestion.canonicalize import PrivateNetworkError, canonicalize_url
 
-_USER_AGENT = "AnalystEngine-Test/0.1"
+_USER_AGENT = "Agentic Analyst-Test/0.1"
 _TIMEOUT_SECONDS = 5.0
 
 

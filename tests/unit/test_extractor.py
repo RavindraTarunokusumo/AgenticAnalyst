@@ -18,7 +18,7 @@ from analyst_engine.ingestion.extractor import (
 )
 from analyst_engine.ingestion.models import ExtractedArticle
 
-_USER_AGENT = "AnalystEngine-Test/0.1"
+_USER_AGENT = "Agentic Analyst-Test/0.1"
 _TIMEOUT_SECONDS = 5.0
 _SIZE_LIMIT_BYTES = 1_000_000
 _ARTICLE_URL = "https://93.184.216.34/article.html"

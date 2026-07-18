@@ -1,4 +1,4 @@
-# AnalystEngine Technical Harness Design
+# Agentic Analyst Technical Harness Design
 
 **Status:** Approved design; pending user review of this document  
 **Date:** 2026-07-10  

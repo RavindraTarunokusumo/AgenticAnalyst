@@ -388,7 +388,7 @@ def create_app(
         finally:
             await runtime.close()
 
-    app = FastAPI(title="AnalystEngine Harness", lifespan=lifespan)
+    app = FastAPI(title="Agentic Analyst Harness", lifespan=lifespan)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

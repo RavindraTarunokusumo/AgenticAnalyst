@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-Give AnalystEngine real weekly and monthly product behavior. The RSS-to-Daily-Brief
+Give Agentic Analyst real weekly and monthly product behavior. The RSS-to-Daily-Brief
 slice (PR #3) proved the full ingestion-to-brief loop for `Cadence.DAILY` only;
 `Cadence.WEEKLY`/`Cadence.MONTHLY` are wired into the scheduler and
 `/workflows/trigger` today, but both call `WorkflowRunner.run_weekly`/`run_monthly`

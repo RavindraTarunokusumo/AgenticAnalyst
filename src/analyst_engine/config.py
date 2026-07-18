@@ -37,7 +37,7 @@ class ModelProvider(StrEnum):
 
 
 class Settings(BaseSettings):
-    """Validated runtime configuration for AnalystEngine."""
+    """Validated runtime configuration for Agentic Analyst."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -169,7 +169,7 @@ class Settings(BaseSettings):
         description="Maximum accepted feed document size in bytes.",
     )
     feed_user_agent: str = Field(
-        default="AnalystEngine/0.1 (+https://github.com/RavindraTarunokusumo/AgenticAnalyst)",
+        default="Agentic Analyst/0.1 (+https://github.com/RavindraTarunokusumo/AgenticAnalyst)",
         description="User-Agent header sent to feeds and article sources.",
     )
     default_poll_interval_minutes: int = Field(

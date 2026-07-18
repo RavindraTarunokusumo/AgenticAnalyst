@@ -1,1 +1,1 @@
-"""AnalystEngine modular monolith package."""
+"""Agentic Analyst modular monolith package."""

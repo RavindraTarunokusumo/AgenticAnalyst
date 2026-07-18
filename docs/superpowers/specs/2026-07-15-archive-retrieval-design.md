@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-Give AnalystEngine "narrative memory you can actually query." Today three
+Give Agentic Analyst "narrative memory you can actually query." Today three
 cadences of briefs exist and are browsable only by cadence+date
 (`GET /briefs`). The `embedding` table, the `Embedding` domain model, and
 `save_embedding` (`persistence/repositories.py:439`) already exist, but

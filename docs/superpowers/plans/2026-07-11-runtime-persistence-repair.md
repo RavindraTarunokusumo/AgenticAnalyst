@@ -3,7 +3,7 @@
 > **For agentic workers:** Implement one checked task at a time. Independent tasks
 > may use isolated worktrees only where their files and dependencies do not overlap.
 
-**Goal:** Make AnalystEngine workflow execution, persistence state, provider
+**Goal:** Make Agentic Analyst workflow execution, persistence state, provider
 wiring, and operational readiness truthful and executable before ingestion work
 begins.
 

@@ -1,4 +1,4 @@
-# AnalystEngine Technical Harness Implementation Plan
+# Agentic Analyst Technical Harness Implementation Plan
 
 > **For agentic workers:** Follow the repository workflow and execute one checked task at a time. Delegated implementation requires explicit user authorization; otherwise implement inline. This is a lightweight contract: regenerate commands and code locally rather than copying code from this document.
 

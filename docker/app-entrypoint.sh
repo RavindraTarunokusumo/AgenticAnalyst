@@ -12,7 +12,7 @@ case "$MODE" in
     ;;
 esac
 
-echo "AnalystEngine starting in ${MODE} mode."
+echo "Agentic Analyst starting in ${MODE} mode."
 
 if [ "$MODE" = "api" ]; then
     exec python -m analyst_engine.main

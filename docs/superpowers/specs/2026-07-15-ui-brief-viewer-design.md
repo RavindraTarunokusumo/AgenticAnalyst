@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-AnalystEngine is API-only end to end today (`docs/architecture.md`: "The
+Agentic Analyst is API-only end to end today (`docs/architecture.md`: "The
 product is API-only end to end"). `GET /briefs` and `GET /briefs/{brief_id}`
 already return everything a human needs to read a brief, but the only way to
 reach them is `curl`/`gh`/a REST client. This slice adds a real, read-only

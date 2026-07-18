@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-Build the first complete AnalystEngine product loop:
+Build the first complete Agentic Analyst product loop:
 
 1. Poll configured RSS or Atom feeds and accept manually submitted article URLs.
 2. Fetch, extract, normalize, and durably deduplicate articles with provenance.

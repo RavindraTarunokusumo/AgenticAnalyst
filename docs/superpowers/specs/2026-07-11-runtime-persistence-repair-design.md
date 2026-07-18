@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Make the existing AnalystEngine harness truthful and executable before ingestion
+Make the existing Agentic Analyst harness truthful and executable before ingestion
 or briefing features are added. A workflow trigger must use real dependencies,
 persist valid lifecycle transitions, expose accurate readiness, and fail visibly
 when work cannot run.

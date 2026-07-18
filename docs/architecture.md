@@ -5,7 +5,7 @@
 The local environment is defined in `compose.yaml` and contains exactly three
 services:
 
-- `app`: a single AnalystEngine image. `APP_PROCESS_MODE=api` is the default;
+- `app`: a single Agentic Analyst image. `APP_PROCESS_MODE=api` is the default;
   `scheduler` selects the scheduler process. The shared entrypoint (and main)
   validates the mode and constructs the runtime dependency bundle for both
   processes. In API mode the process serves a FastAPI application (uvicorn on

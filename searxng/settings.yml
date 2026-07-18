@@ -1,7 +1,7 @@
 use_default_settings: true
 
 general:
-  instance_name: AnalystEngine Local Search
+  instance_name: Agentic Analyst Local Search
 
 search:
   formats:

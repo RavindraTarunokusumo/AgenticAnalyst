@@ -180,7 +180,7 @@ function App() {
 
   const header = (
     <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-      <h1 className="text-xl font-semibold">AnalystEngine Briefs</h1>
+      <h1 className="text-xl font-semibold">Agentic Analyst Briefs</h1>
       <ApiKeySettings apiKey={apiKey} onSave={handleApiKeySave} />
     </header>
   )

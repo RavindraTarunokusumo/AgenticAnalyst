@@ -83,7 +83,7 @@ Record reusable lessons from completed sessions.
 - What failed:
   - Unix tools in pwsh (head, tail, grep, | cat) consistently fail or produce parser errors — must use Select-Object, Select-String, python -c.
   - Background tasks (long gates) often return "(no output yet)" in tool; had to re-run or read .log files directly from ~/.grok/sessions/.../terminal/.
-  - git remote was pointing to old AnalystEngine name (repo had moved); push --dry-run revealed it, had to set-url and re-push.
+  - git remote was pointing to old Agentic Analyst name (repo had moved); push --dry-run revealed it, had to set-url and re-push.
   - main checkout already claimed by another worktree; had to operate on main via git -C <main-path> and absolute paths for edits.
   - Some mypy "errors" were only 3p stub notes or layout (tests/fixtures duplicate module); had to add explicit_package_bases + overrides to get clean "Success".
 

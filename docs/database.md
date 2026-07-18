@@ -2,7 +2,7 @@
 
 ## Purpose
 
-PostgreSQL 16 + pgvector is the single system of record for AnalystEngine. It stores LangGraph checkpoints, source and article records, deterministic article batches, batch summaries, briefs, versioned Narrative State, expectations, embeddings of briefs, and workflow run metadata for durable cadence execution.
+PostgreSQL 16 + pgvector is the single system of record for Agentic Analyst. It stores LangGraph checkpoints, source and article records, deterministic article batches, batch summaries, briefs, versioned Narrative State, expectations, embeddings of briefs, and workflow run metadata for durable cadence execution.
 
 No claim_event, event fingerprinting, or contradiction graph exists (explicitly deferred).
 

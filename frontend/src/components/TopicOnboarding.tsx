@@ -162,7 +162,7 @@ export function TopicOnboarding({
     <div className="mx-auto max-w-md p-6">
       <h2 className="mb-1 text-lg font-semibold text-slate-900">Create a topic</h2>
       <p className="mb-4 text-sm text-slate-500">
-        Topics are what AnalystEngine follows. Set up interest, keywords, and an optional first source.
+        Topics are what Agentic Analyst follows. Set up interest, keywords, and an optional first source.
       </p>
 
       <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-400">
