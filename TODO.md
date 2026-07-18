@@ -6,33 +6,9 @@ Completed sessions must be moved to `docs/iterations/archive/`.
 
 ## Backlog
 
-### Active: Multi-Topic Source Sharing (composite uniqueness)
-
-Spec: `docs/superpowers/specs/2026-07-17-multi-topic-source-sharing-design.md`
-Plan: `docs/superpowers/plans/2026-07-17-multi-topic-source-sharing.md`
-Branch: `codex/multi-topic-sources`
-
-- [ ] **M1** ORM composite uniqueness — drop inline `unique=True` on
-      `source.stable_id` / `article.url_fingerprint` /
-      `source_feed.feed_url_fingerprint`; add composite `UniqueConstraint`s.
-- [ ] **M2** Alembic migration (`down_revision = 00f3ae192a5a`) — drop the three
-      global unique constraints, create the composites; reversible.
-- [ ] **M3** Repository scoping — `get_source_by_stable_id` / `upsert_source`
-      by `topic_id`; `get_article_by_fingerprint` by `topic_id`;
-      `get_source_feed_by_fingerprint` / `upsert_source_feed` by `source_id`.
-- [ ] **M4** Caller ripple — `api/app.py` register_source, `ingestion/service.py`
-      dedup (×2), `tests/integration/test_topic_scoped_pipeline.py` call sites.
-- [ ] **M5** Discriminating acceptance test — same `stable_id` + same
-      `url_fingerprint` under two topics → two rows each, no raise (fails on `main`).
-- [ ] **M5b** (extension, Rule 2) Test ripple caught by the full gate that Grok's
-      scoped run missed: `test_ingestion_service.py` fakes for
-      `get_article_by_fingerprint` needed the new `*, topic_id` kwarg; and
-      `test_readiness_checks.py`'s hard-coded migration-head constant bumped to
-      the new head `b8e4c1a09f3d`.
-- [ ] **M6** Docs — `docs/database.md` uniqueness scopes, `docs/changelog.md`.
-
-Prior: Topic-First Analyst — Slice 1, merged as PR #9
-(`docs/iterations/archive/2026-07-16-topic-first-analyst.md`).
+No active session. Most recent: Multi-Topic Source Sharing (composite
+uniqueness), merged as PR #10
+(`docs/iterations/archive/2026-07-17-multi-topic-source-sharing.md`).
 
 ## Future Backlog
 
