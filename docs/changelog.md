@@ -2,6 +2,15 @@
 
 Record notable behavior, architecture, API, persistence, or workflow changes.
 
+## 2026-07-17 — Multi-Topic Source Sharing (composite uniqueness)
+
+Summary:
+- What changed: Three previously-global uniqueness constraints became composite so the same source and the same URL can be used across multiple topics (migration `b8e4c1a09f3d`): `source.stable_id` → `(topic_id, stable_id)`, `article.url_fingerprint` → `(topic_id, url_fingerprint)`, `source_feed.feed_url_fingerprint` → `(source_id, feed_url_fingerprint)`. Correspondingly, the repository lookups that keyed on these identifiers were scoped: `get_source_by_stable_id`/`upsert_source` take `topic_id`, `get_article_by_fingerprint` takes `topic_id`, `get_source_feed_by_fingerprint`/`upsert_source_feed` key on `source_id`. Both `get_article_by_fingerprint` call sites in ingestion (pre-insert dedup and the IntegrityError winner re-fetch) pass `topic_id`.
+- Why: Slice 1 (PR #9) scoped sources/articles/briefs to a topic but left these three uniqueness scopes global. That made a shared source/URL unusable across topics — re-registering silently reassigned the source, and the same URL under a second topic was dup-suppressed against the first topic's article. Once two topics legitimately share an identifier, an unscoped `scalar_one_or_none()` lookup also returns two rows and 500s. The user confirmed cross-topic sharing as a real requirement.
+- User-visible impact: the same source can now be registered under several topics, and the same URL ingested under several topics lands as a distinct article in each topic's pool.
+- Migration notes: `b8e4c1a09f3d` (`down_revision = 00f3ae192a5a`). Downgrade re-adds the global uniques and can fail if cross-topic duplicates already exist (inherent to widening a uniqueness scope).
+- Related PR/commit: `docs/superpowers/specs/2026-07-17-multi-topic-source-sharing-design.md`, `docs/superpowers/plans/2026-07-17-multi-topic-source-sharing.md`; see `TODO.md` for commit hashes.
+
 ## 2026-07-16 — Product UI Refinement (onboarding, uploads, add-content)
 
 Summary:

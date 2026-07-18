@@ -528,7 +528,12 @@ async def list_sources_for_topic(session: AsyncSession, topic_id: uuid.UUID) -> 
 
 async def upsert_source(session: AsyncSession, source: Source) -> Source:
     orm = (
-        await session.execute(select(ORMSource).where(ORMSource.stable_id == source.stable_id))
+        await session.execute(
+            select(ORMSource).where(
+                ORMSource.stable_id == source.stable_id,
+                ORMSource.topic_id == source.topic_id,
+            )
+        )
     ).scalar_one_or_none()
     if orm is None:
         orm = ORMSource(
@@ -836,7 +841,8 @@ async def upsert_source_feed(session: AsyncSession, feed: SourceFeed) -> SourceF
     row = (
         await session.execute(
             select(ORMSourceFeed).where(
-                ORMSourceFeed.feed_url_fingerprint == feed.feed_url_fingerprint
+                ORMSourceFeed.feed_url_fingerprint == feed.feed_url_fingerprint,
+                ORMSourceFeed.source_id == feed.source_id,
             )
         )
     ).scalar_one_or_none()
@@ -858,11 +864,14 @@ async def upsert_source_feed(session: AsyncSession, feed: SourceFeed) -> SourceF
 
 
 async def get_source_feed_by_fingerprint(
-    session: AsyncSession, fingerprint: str
+    session: AsyncSession, fingerprint: str, *, source_id: uuid.UUID
 ) -> SourceFeed | None:
     row = (
         await session.execute(
-            select(ORMSourceFeed).where(ORMSourceFeed.feed_url_fingerprint == fingerprint)
+            select(ORMSourceFeed).where(
+                ORMSourceFeed.feed_url_fingerprint == fingerprint,
+                ORMSourceFeed.source_id == source_id,
+            )
         )
     ).scalar_one_or_none()
     if row is None:
@@ -910,9 +919,16 @@ async def list_sources(session: AsyncSession) -> list[Source]:
     return [_source_to_domain(row) for row in rows]
 
 
-async def get_source_by_stable_id(session: AsyncSession, stable_id: str) -> Source | None:
+async def get_source_by_stable_id(
+    session: AsyncSession, stable_id: str, *, topic_id: uuid.UUID
+) -> Source | None:
     row = (
-        await session.execute(select(ORMSource).where(ORMSource.stable_id == stable_id))
+        await session.execute(
+            select(ORMSource).where(
+                ORMSource.stable_id == stable_id,
+                ORMSource.topic_id == topic_id,
+            )
+        )
     ).scalar_one_or_none()
     if row is None:
         return None
@@ -996,9 +1012,16 @@ async def update_ingestion_attempt(
     return _ingestion_attempt_to_domain(row)
 
 
-async def get_article_by_fingerprint(session: AsyncSession, fingerprint: str) -> Article | None:
+async def get_article_by_fingerprint(
+    session: AsyncSession, fingerprint: str, *, topic_id: uuid.UUID
+) -> Article | None:
     row = (
-        await session.execute(select(ORMArticle).where(ORMArticle.url_fingerprint == fingerprint))
+        await session.execute(
+            select(ORMArticle).where(
+                ORMArticle.url_fingerprint == fingerprint,
+                ORMArticle.topic_id == topic_id,
+            )
+        )
     ).scalar_one_or_none()
     if row is None:
         return None
