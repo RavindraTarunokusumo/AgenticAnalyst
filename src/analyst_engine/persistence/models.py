@@ -44,14 +44,17 @@ class Source(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     topic_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
-    stable_id: Mapped[str] = mapped_column(String(256), unique=True, nullable=False)
+    stable_id: Mapped[str] = mapped_column(String(256), nullable=False)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     normalized_domain: Mapped[str] = mapped_column(String(256), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
     )
 
-    __table_args__ = (sa.ForeignKeyConstraint(["topic_id"], ["topic.id"], ondelete="RESTRICT"),)
+    __table_args__ = (
+        sa.ForeignKeyConstraint(["topic_id"], ["topic.id"], ondelete="RESTRICT"),
+        sa.UniqueConstraint("topic_id", "stable_id", name="uq_source_topic_stable_id"),
+    )
 
 
 class Article(Base):
@@ -63,7 +66,7 @@ class Article(Base):
         UUID(as_uuid=True), nullable=True, index=True
     )
     url: Mapped[str] = mapped_column(Text, nullable=False)
-    url_fingerprint: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    url_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     author: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime] = mapped_column(
@@ -76,7 +79,10 @@ class Article(Base):
     raw_content_hash: Mapped[str | None] = mapped_column(String(128))
     cleaned_content: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (sa.ForeignKeyConstraint(["topic_id"], ["topic.id"], ondelete="RESTRICT"),)
+    __table_args__ = (
+        sa.ForeignKeyConstraint(["topic_id"], ["topic.id"], ondelete="RESTRICT"),
+        sa.UniqueConstraint("topic_id", "url_fingerprint", name="uq_article_topic_url_fingerprint"),
+    )
 
 
 class ArticleBatch(Base):
@@ -127,7 +133,7 @@ class SourceFeed(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     feed_url: Mapped[str] = mapped_column(Text, nullable=False)
-    feed_url_fingerprint: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    feed_url_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
     enabled: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
     poll_interval_minutes: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     etag: Mapped[str | None] = mapped_column(Text)
@@ -142,7 +148,12 @@ class SourceFeed(Base):
         DateTime(timezone=True), nullable=False, default=datetime.now(UTC)
     )
 
-    __table_args__ = (sa.ForeignKeyConstraint(["source_id"], ["source.id"], ondelete="RESTRICT"),)
+    __table_args__ = (
+        sa.ForeignKeyConstraint(["source_id"], ["source.id"], ondelete="RESTRICT"),
+        sa.UniqueConstraint(
+            "source_id", "feed_url_fingerprint", name="uq_source_feed_source_url_fingerprint"
+        ),
+    )
 
 
 class IngestionAttempt(Base):
