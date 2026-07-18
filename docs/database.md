@@ -32,13 +32,13 @@ articles, briefs, and ingestion attempts are all scoped to one topic.
 Stable registered source, scoped to a topic.
 - `id` (UUID PK)
 - `topic_id` (FK → topic, `ON DELETE RESTRICT`, indexed)
-- `stable_id` (unique)
+- `stable_id` (unique **per topic**: `(topic_id, stable_id)` — the same source may be registered under multiple topics)
 - `name`, `normalized_domain`
 - `created_at`
 
 ### source_feed
 Polled RSS/Atom feed belonging to a source.
-- `id`, `source_id` (FK), `feed_url`, `feed_url_fingerprint` (unique), `enabled`, `poll_interval_minutes`, `etag`, `last_modified`, `last_polled_at`, `last_success_at`, `last_error_summary`, created/updated_at
+- `id`, `source_id` (FK), `feed_url`, `feed_url_fingerprint` (unique **per source**: `(source_id, feed_url_fingerprint)`), `enabled`, `poll_interval_minutes`, `etag`, `last_modified`, `last_polled_at`, `last_success_at`, `last_error_summary`, created/updated_at
 
 ### ingestion_attempt
 Observable record of one feed or manual ingestion attempt (attempts, not the immutable article, absorb failures/duplicates). A candidate rejected by the topic relevance filter still records an attempt (`error_code="not_relevant"`) so drops are observable, not silent.
@@ -46,7 +46,7 @@ Observable record of one feed or manual ingestion attempt (attempts, not the imm
 
 ### article
 Immutable captured content with provenance.
-- `id` (UUID PK), `topic_id` (FK → topic, `ON DELETE RESTRICT`, indexed), `source_id` (**nullable** FK — null for direct pasted-link/upload adds, which carry a topic but no source, spec §3.2), `url`, `url_fingerprint` (unique), title, author, published/ingested, language, hashes, `cleaned_content`
+- `id` (UUID PK), `topic_id` (FK → topic, `ON DELETE RESTRICT`, indexed), `source_id` (**nullable** FK — null for direct pasted-link/upload adds, which carry a topic but no source, spec §3.2), `url`, `url_fingerprint` (unique **per topic**: `(topic_id, url_fingerprint)` — the same URL may be ingested under multiple topics, each getting its own article row), title, author, published/ingested, language, hashes, `cleaned_content`
 - Indexes on source and published_at.
 
 ### article_batch
@@ -85,7 +85,7 @@ Idempotent scheduled execution record.
 ## Migration Rules
 
 - Alembic is the sole mechanism.
-- Initial migration (`963e5ab691b1`) is manual and includes both app tables and checkpoint tables. `6b135f7a55de` adds `source_feed`/`ingestion_attempt` and the `article_batch`/`batch_summary` constraints above. `00f3ae192a5a` adds the `topic` table and `topic_id` FKs (on source/article/brief/ingestion_attempt), makes `article.source_id` and `ingestion_attempt.source_id` nullable, and replaces the brief cadence-interval unique index with the topic-scoped one. Its upgrade seeds a `Default` topic (keywords sentinel `["__default__"]`, since an empty list is rejected) and backfills existing rows so `topic_id` lands non-null; run against a real Postgres (upgrade/downgrade + seeded backfill).
+- Initial migration (`963e5ab691b1`) is manual and includes both app tables and checkpoint tables. `6b135f7a55de` adds `source_feed`/`ingestion_attempt` and the `article_batch`/`batch_summary` constraints above. `00f3ae192a5a` adds the `topic` table and `topic_id` FKs (on source/article/brief/ingestion_attempt), makes `article.source_id` and `ingestion_attempt.source_id` nullable, and replaces the brief cadence-interval unique index with the topic-scoped one. Its upgrade seeds a `Default` topic (keywords sentinel `["__default__"]`, since an empty list is rejected) and backfills existing rows so `topic_id` lands non-null; run against a real Postgres (upgrade/downgrade + seeded backfill). `b8e4c1a09f3d` widens three uniqueness scopes from global to composite so the same source/URL can be used across topics: `source` → `(topic_id, stable_id)`, `article` → `(topic_id, url_fingerprint)`, `source_feed` → `(source_id, feed_url_fingerprint)`. Its downgrade re-adds the global uniques and can fail if cross-topic duplicates already exist (inherent to widening a uniqueness scope).
 - Migrations are exercised from blank PostgreSQL+pgvector container in integration tests (upgrade/base/upgrade roundtrip).
 - Downgrades are provided where feasible.
 - Never edit a committed migration; add a new revision.
